@@ -5,23 +5,10 @@ export const WORLD = {
 
 export const EGG_RADIUS = 22;
 
-export const TWEAKS = {
-  gravity: 1.05,
-  breakImpulse: 0.085,
-  nestSettleSpeed: 1.35,
-  nestHoldFrames: 10,
-  bounceScale: 1,
-  fanForce: 0.0042,
-  eggLaySpacingMs: 420,
-  inkBudgetScale: 1,
-};
-
 export type ToolKind = "spring" | "pad" | "fan" | "conveyor" | "sticky";
 export type HazardKind = "spike" | "fire" | "pan";
 export type PlacedKind = ToolKind | HazardKind;
-
 export type GameMode = "intro" | "ready" | "laying" | "running" | "won" | "failed";
-
 export type SelectedTool = "draw" | ToolKind;
 
 export interface Vec2 {
@@ -67,6 +54,7 @@ export interface SaveData {
   unlockedLevel: number;
   bestStars: number[];
   muted: boolean;
+  reduceMotion: boolean;
 }
 
 export interface EggRuntime {
@@ -75,5 +63,33 @@ export interface EggRuntime {
   nested: boolean;
   broken: boolean;
   nestHold: number;
-  pinConstraintId?: number;
 }
+
+export interface InkStroke {
+  points: Vec2[];
+}
+
+export interface PlacedTool {
+  id: string;
+  type: PlacedKind;
+  x: number;
+  y: number;
+  angle: number;
+  w: number;
+  h: number;
+  dir: number;
+  bodyIds: number[];
+}
+
+export type FailReason = "crack" | "fire" | "pan" | "spike" | "fell" | "timeout";
+
+export const TOOL_META: Record<
+  ToolKind,
+  { label: string; unlock: number; w: number; h: number; color: string }
+> = {
+  spring: { label: "Spring", unlock: 2, w: 84, h: 90, color: "#6bcf7f" },
+  pad: { label: "Pad", unlock: 4, w: 110, h: 62, color: "#7ec8ff" },
+  fan: { label: "Fan", unlock: 8, w: 84, h: 92, color: "#9be7ff" },
+  conveyor: { label: "Belt", unlock: 13, w: 145, h: 54, color: "#c9a66b" },
+  sticky: { label: "Sticky", unlock: 18, w: 135, h: 62, color: "#d4a5ff" },
+};

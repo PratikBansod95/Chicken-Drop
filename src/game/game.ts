@@ -1,10 +1,12 @@
-import { AudioBus, TOOL_META } from "./audio";
+import { AudioBus } from "./audio";
 import { generateLevel } from "./levels";
 import { PhysicsWorld, type InkStroke, type PlacedTool } from "./physics";
 import { renderFrame, resizeCanvas, worldFromClient } from "./render";
 import { loadSave, writeSave } from "./save";
-import { TWEAKS } from "./types";
+import { TWEAKS } from "./tweaks";
+import { TOOL_META } from "./types";
 import type {
+  FailReason,
   GameMode,
   LevelData,
   SaveData,
@@ -12,24 +14,19 @@ import type {
   ToolKind,
   Vec2,
 } from "./types";
-
-function starString(n: number) {
-  return "★".repeat(n) + "☆".repeat(3 - n);
-}
-
-function strokeLength(points: Vec2[]) {
-  let len = 0;
-  for (let i = 1; i < points.length; i++) {
-    len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-  }
-  return len;
-}
+import { CameraFx } from "./systems/cameraFx";
+import { appendDraftPoint, commitStroke, strokeLength } from "./systems/inkDraw";
+import { failMessage, scoreStars } from "./systems/winLose";
+import { updateHud } from "./ui/hud";
+import { refreshTray } from "./ui/tray";
+import { shellHtml, showResult } from "./ui/overlays";
 
 export class Game {
   private root: HTMLElement;
   private canvas!: HTMLCanvasElement;
   private physics = new PhysicsWorld();
   private audio = new AudioBus();
+  private fx = new CameraFx();
   private save: SaveData;
   private level!: LevelData;
   private mode: GameMode = "intro";
@@ -50,12 +47,12 @@ export class Game {
   private nestedCount = 0;
   private collectedStars = new Set<number>();
   private crackedPositions: Vec2[] = [];
-  private failMessage = "";
-  private toast = "";
+  private failMessageText = "";
   private toastUntil = 0;
   private raf = 0;
   private lastTs = 0;
   private drawing = false;
+  private paused = false;
   private els!: {
     level: HTMLElement;
     stars: HTMLElement;
@@ -71,65 +68,23 @@ export class Game {
     resultCopy: HTMLElement;
     startOverlay: HTMLElement;
     resultOverlay: HTMLElement;
+    preload: HTMLElement;
     muteBtn: HTMLElement;
+    motionBtn: HTMLElement;
   };
 
   constructor(root: HTMLElement) {
     this.root = root;
     this.save = loadSave();
+    const prefersReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduce) this.save.reduceMotion = true;
     this.audio.setMuted(this.save.muted);
+    this.fx.reduceMotion = this.save.reduceMotion;
   }
 
   start() {
-    this.root.className = "egg-game";
-    this.root.innerHTML = `
-      <canvas class="egg-canvas" aria-label="Chicken Nest Run playfield"></canvas>
-      <div class="egg-hud">
-        <div class="egg-hud-main">
-          <span data-field="level">Level 1</span>
-          <span data-field="stars">☆☆☆</span>
-        </div>
-        <div class="egg-hud-sub">
-          <span data-field="timer">0:00</span>
-          <span data-field="ink">Ink 100%</span>
-          <span data-field="nest">Nest 0/1</span>
-          <span data-field="best">Best ☆☆☆</span>
-        </div>
-      </div>
-      <div class="egg-top-actions">
-        <button type="button" class="egg-icon" data-action="mute" aria-label="Mute">🔊</button>
-        <button type="button" class="egg-icon egg-icon-wide" data-action="reset" aria-label="Reset level">↻</button>
-        <button type="button" class="egg-play" data-action="play" aria-label="Run the eggs">Play</button>
-      </div>
-      <div class="egg-toast" data-field="toast" hidden></div>
-      <div class="egg-tray" data-field="tray"></div>
-      <div class="egg-editbar">
-        <button type="button" class="egg-small" data-action="undo">Undo</button>
-        <button type="button" class="egg-small" data-action="clear">Clear</button>
-        <button type="button" class="egg-small" data-action="rotateLeft">⟲</button>
-        <button type="button" class="egg-small" data-action="rotateRight">⟳</button>
-        <button type="button" class="egg-small" data-action="delete">Delete</button>
-      </div>
-      <div class="egg-overlay" data-overlay="start">
-        <div class="egg-panel">
-          <h1>Chicken Nest Run</h1>
-          <p data-field="startCopy">The hen lays eggs. Guide every egg safely into the nest.</p>
-          <button type="button" class="egg-primary" data-action="start">Tap to Start</button>
-        </div>
-      </div>
-      <div class="egg-overlay" data-overlay="result" hidden>
-        <div class="egg-panel">
-          <h2 data-field="resultTitle">Nice catch!</h2>
-          <div class="egg-result-stars" data-field="resultStars">★★★</div>
-          <p data-field="resultCopy">Every egg made it home.</p>
-          <div class="egg-actions-row">
-            <button type="button" class="egg-primary" data-action="resultNext">Next</button>
-            <button type="button" class="egg-secondary" data-action="resultRetry">Retry</button>
-          </div>
-        </div>
-      </div>
-    `;
-
+    this.root.className = "egg-game egg-intro-open";
+    this.root.innerHTML = shellHtml();
     this.canvas = this.root.querySelector(".egg-canvas")!;
     this.els = {
       level: this.root.querySelector('[data-field="level"]')!,
@@ -146,7 +101,9 @@ export class Game {
       resultCopy: this.root.querySelector('[data-field="resultCopy"]')!,
       startOverlay: this.root.querySelector('[data-overlay="start"]')!,
       resultOverlay: this.root.querySelector('[data-overlay="result"]')!,
+      preload: this.root.querySelector('[data-overlay="preload"]')!,
       muteBtn: this.root.querySelector('[data-action="mute"]')!,
+      motionBtn: this.root.querySelector('[data-action="motion"]')!,
     };
 
     this.bindUi();
@@ -154,6 +111,7 @@ export class Game {
     this.onResize();
     window.addEventListener("resize", this.onResize);
     window.addEventListener("keydown", this.onKey);
+    document.addEventListener("visibilitychange", this.onVisibility);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
@@ -161,28 +119,41 @@ export class Game {
 
     this.physics.onEggNested = (id) => this.handleNested(id);
     this.physics.onEggBroken = (id, reason) => this.handleBroken(id, reason);
-    this.physics.onBounce = () => this.audio.play("bounce");
+    this.physics.onBounce = (s) => {
+      this.audio.play("bounce");
+      this.fx.impulse(Math.min(8, s * 0.35));
+    };
+
+    // Brief preload splash then show start
+    window.setTimeout(() => {
+      this.els.preload.hidden = true;
+      this.els.startOverlay.hidden = false;
+      this.canvas.hidden = false;
+      this.refreshTray();
+      this.updateHud();
+    }, 500);
 
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame(this.tick);
-    this.updateHud();
     this.refreshTray();
+    this.updateHud();
   }
 
   destroy() {
     cancelAnimationFrame(this.raf);
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("keydown", this.onKey);
+    document.removeEventListener("visibilitychange", this.onVisibility);
     this.physics.destroy();
     this.root.replaceChildren();
   }
 
   private bindUi() {
-    const act = (name: string, fn: () => void) => {
+    const act = (name: string, fn: () => void | Promise<void>) => {
       this.root.querySelector(`[data-action="${name}"]`)?.addEventListener("click", async () => {
         await this.audio.unlock();
         this.audio.play("tap");
-        fn();
+        await fn();
       });
     };
     act("start", () => this.beginPlaySession());
@@ -199,17 +170,29 @@ export class Game {
       this.save.muted = !this.save.muted;
       this.audio.setMuted(this.save.muted);
       writeSave(this.save);
-      this.els.muteBtn.textContent = this.save.muted ? "🔇" : "🔊";
+      this.updateHud();
+    });
+    act("motion", () => {
+      this.save.reduceMotion = !this.save.reduceMotion;
+      this.fx.reduceMotion = this.save.reduceMotion;
+      writeSave(this.save);
+      this.updateHud();
     });
   }
 
-  private beginPlaySession() {
+  private async beginPlaySession() {
     this.root.classList.remove("egg-intro-open");
     this.els.startOverlay.hidden = true;
     this.mode = "ready";
     this.canvas.hidden = false;
+    await this.audio.enableMusic();
     this.audio.play("cluck");
-    this.showToast(this.level.eggCount === 1 ? "Guide the egg to the nest" : `Get all ${this.level.eggCount} eggs in the nest`);
+    this.showToast(
+      this.level.eggCount === 1
+        ? "Guide the egg to the nest"
+        : `Get all ${this.level.eggCount} eggs in the nest`,
+    );
+    this.refreshTray();
     this.updateHud();
   }
 
@@ -228,25 +211,26 @@ export class Game {
     this.eggsToLay = this.level.eggCount;
     this.collectedStars.clear();
     this.crackedPositions = [];
-    this.failMessage = "";
+    this.failMessageText = "";
     this.chickenPhase = "idle";
-    this.mode = this.els?.startOverlay && !this.els.startOverlay.hidden ? "intro" : "ready";
+    this.mode = this.els.startOverlay.hidden ? "ready" : "intro";
     this.physics.resetLevel(this.level, [], []);
     this.els.resultOverlay.hidden = true;
+    this.els.startCopy.textContent =
+      this.level.eggCount === 1
+        ? "Level 1: the hen lays one egg.\nDraw a path to the nest, then tap Play."
+        : `This level: ${this.level.eggCount} eggs.\nEvery egg must settle in the nest.`;
     this.refreshTray();
     this.updateHud();
   }
 
   private resetLevel() {
-    const n = this.level.number;
-    const keepIntro = false;
-    this.loadLevel(n);
-    if (!keepIntro) {
-      this.els.startOverlay.hidden = true;
-      this.root.classList.remove("egg-intro-open");
-      this.mode = "ready";
-      this.canvas.hidden = false;
-    }
+    this.loadLevel(this.level.number);
+    this.els.startOverlay.hidden = true;
+    this.root.classList.remove("egg-intro-open");
+    this.mode = "ready";
+    this.canvas.hidden = false;
+    this.refreshTray();
   }
 
   private nextLevel() {
@@ -258,7 +242,9 @@ export class Game {
     this.root.classList.remove("egg-intro-open");
     this.mode = "ready";
     this.canvas.hidden = false;
-    this.showToast(this.level.eggCount === 1 ? "One egg this time" : `${this.level.eggCount} eggs — nest them all`);
+    this.showToast(
+      this.level.eggCount === 1 ? "One egg this time" : `${this.level.eggCount} eggs — nest them all`,
+    );
   }
 
   private startRun() {
@@ -295,7 +281,10 @@ export class Game {
     this.eggsLaid += 1;
     const jitter = (this.eggsLaid - 1) * 8;
     this.physics.spawnEgg(
-      { x: this.level.start.x - 10 + (Math.random() * 10 - 5), y: this.level.start.y + 40 + jitter },
+      {
+        x: this.level.start.x - 10 + (Math.random() * 10 - 5),
+        y: this.level.start.y + 40 + jitter,
+      },
       `egg-${this.eggsLaid}`,
     );
     this.audio.play("lay");
@@ -305,27 +294,16 @@ export class Game {
   private handleNested(_id: string) {
     this.nestedCount += 1;
     this.audio.play("plop");
+    this.fx.impulse(3);
     this.showToast(`Nested ${this.nestedCount}/${this.eggsToLay}`);
     this.updateHud();
-    if (this.nestedCount >= this.eggsToLay && this.eggsLaid >= this.eggsToLay) {
-      this.win();
-    }
+    if (this.nestedCount >= this.eggsToLay && this.eggsLaid >= this.eggsToLay) this.win();
   }
 
-  private handleBroken(_id: string, reason: string) {
-    const bodyHint =
-      reason === "fire"
-        ? "An egg was cooked by the fire."
-        : reason === "pan"
-          ? "An egg hit the frying pan."
-          : reason === "spike"
-            ? "An egg hit spikes."
-            : reason === "fell"
-              ? "An egg fell out of the map."
-              : "An egg cracked on impact.";
-    this.failMessage = bodyHint;
+  private handleBroken(id: string, reason: FailReason) {
+    this.failMessageText = failMessage(reason, id.replace("egg-", "Egg "));
     this.audio.play("crack");
-    // capture last positions roughly from physics already removed — skip
+    this.fx.impulse(10);
     this.fail();
   }
 
@@ -333,27 +311,32 @@ export class Game {
     if (this.mode === "won" || this.mode === "failed") return;
     this.mode = "won";
     this.audio.play("win");
+    this.fx.burst(this.level.basket.x, this.level.basket.y);
 
-    let stars = 1;
-    if (this.inkUsed <= this.level.parInk) stars += 1;
-    if (this.placed.length <= this.level.parTools && this.elapsed <= this.level.timeLimit * 0.78)
-      stars += 1;
-    stars = Math.min(3, stars + (this.collectedStars.size === 3 ? 0 : 0));
-    if (this.collectedStars.size >= 2) stars = Math.min(3, stars + 1);
-    stars = Math.max(1, Math.min(3, stars));
+    const stars = scoreStars({
+      inkUsed: this.inkUsed,
+      parInk: this.level.parInk,
+      placedCount: this.placed.length,
+      parTools: this.level.parTools,
+      elapsed: this.elapsed,
+      timeLimit: this.level.timeLimit,
+      starsCollected: this.collectedStars.size,
+    });
 
     const idx = this.level.number - 1;
     this.save.bestStars[idx] = Math.max(this.save.bestStars[idx] ?? 0, stars);
     this.save.unlockedLevel = Math.max(this.save.unlockedLevel, Math.min(50, this.level.number + 1));
     writeSave(this.save);
 
-    this.els.resultTitle.textContent = stars >= 3 ? "Perfect nest!" : "Eggs home!";
-    this.els.resultStars.textContent = starString(stars);
-    this.els.resultCopy.textContent =
-      this.eggsToLay === 1
-        ? "The egg settled safely in the nest."
-        : `All ${this.eggsToLay} eggs settled in the nest.`;
-    this.els.resultOverlay.hidden = false;
+    showResult(this.els, {
+      won: true,
+      stars,
+      title: stars >= 3 ? "Perfect nest!" : "Eggs home!",
+      copy:
+        this.eggsToLay === 1
+          ? "The egg settled safely in the nest."
+          : `All ${this.eggsToLay} eggs settled in the nest.`,
+    });
     this.updateHud();
   }
 
@@ -361,10 +344,12 @@ export class Game {
     if (this.mode === "won" || this.mode === "failed") return;
     this.mode = "failed";
     this.audio.play("fail");
-    this.els.resultTitle.textContent = "Oh no!";
-    this.els.resultStars.textContent = "☆☆☆";
-    this.els.resultCopy.textContent = this.failMessage || "Try a softer path.";
-    this.els.resultOverlay.hidden = false;
+    showResult(this.els, {
+      won: false,
+      stars: 0,
+      title: "Oh no!",
+      copy: this.failMessageText || "Try a softer path.",
+    });
   }
 
   private undo() {
@@ -396,73 +381,55 @@ export class Game {
     if (idx < 0) return;
     const [obj] = this.placed.splice(idx, 1);
     const kind = obj.type as ToolKind;
-    if (kind in TOOL_META) {
-      this.remainingTools[kind] = (this.remainingTools[kind] ?? 0) + 1;
-    }
+    if (kind in TOOL_META) this.remainingTools[kind] = (this.remainingTools[kind] ?? 0) + 1;
     this.selectedPlacedId = null;
     this.refreshTray();
   }
 
   private showToast(msg: string) {
-    this.toast = msg;
     this.toastUntil = this.clock + 1.8;
     this.els.toast.hidden = false;
     this.els.toast.textContent = msg;
   }
 
   private refreshTray() {
-    const tray = this.els.tray;
-    tray.replaceChildren();
-
-    const drawBtn = document.createElement("button");
-    drawBtn.type = "button";
-    drawBtn.className = `egg-tool${this.selectedTool === "draw" ? " is-selected" : ""}`;
-    drawBtn.innerHTML = `<span>✎ Draw</span><strong></strong>`;
-    drawBtn.addEventListener("click", () => {
-      this.selectedTool = "draw";
-      this.selectedPlacedId = null;
-      this.refreshTray();
-      this.audio.play("tap");
-    });
-    tray.append(drawBtn);
-
-    for (const [kind, total] of Object.entries(this.level.tools) as [ToolKind, number][]) {
-      const left = this.remainingTools[kind] ?? 0;
-      const meta = TOOL_META[kind];
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `egg-tool${this.selectedTool === kind ? " is-selected" : ""}`;
-      btn.disabled = this.mode !== "ready" || left <= 0;
-      btn.innerHTML = `<span>${meta.label}</span><strong>${left}/${total}</strong>`;
-      btn.addEventListener("click", () => {
-        if (left <= 0 || this.mode !== "ready") return;
-        this.selectedTool = kind;
+    refreshTray(this.els.tray, {
+      mode: this.mode,
+      selectedTool: this.selectedTool,
+      levelTools: this.level.tools,
+      remaining: this.remainingTools,
+      onSelect: (tool) => {
+        this.selectedTool = tool;
         this.selectedPlacedId = null;
-        this.refreshTray();
         this.audio.play("tap");
-      });
-      tray.append(btn);
-    }
+        this.refreshTray();
+      },
+    });
   }
 
   private updateHud() {
-    this.els.level.textContent = `Level ${this.level.number}`;
-    this.els.stars.textContent = starString(this.collectedStars.size);
     const left = Math.max(0, Math.ceil(this.level.timeLimit - this.elapsed));
-    this.els.timer.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
     const inkPct = Math.max(0, Math.round((1 - this.inkUsed / this.level.inkLimit) * 100));
-    this.els.ink.textContent = `Ink ${inkPct}%`;
-    this.els.nest.textContent = `Nest ${this.nestedCount}/${this.eggsToLay || this.level.eggCount}`;
-    this.els.best.textContent = `Best ${starString(this.save.bestStars[this.level.number - 1] || 0)}`;
-    this.els.muteBtn.textContent = this.save.muted ? "🔇" : "🔊";
-    this.els.startCopy.textContent =
-      this.level.eggCount === 1
-        ? "Level 1: the hen lays one egg.\nDraw a path to the nest, then tap Play."
-        : `This level: ${this.level.eggCount} eggs.\nEvery egg must settle in the nest.`;
+    updateHud(this.els, {
+      levelNumber: this.level.number,
+      starsCollected: this.collectedStars.size,
+      timeLeft: left,
+      inkPct,
+      nested: this.nestedCount,
+      totalEggs: this.eggsToLay || this.level.eggCount,
+      best: this.save.bestStars[this.level.number - 1] || 0,
+      muted: this.save.muted,
+      reduceMotion: this.save.reduceMotion,
+    });
   }
 
   private onResize = () => {
     this.view = resizeCanvas(this.canvas);
+  };
+
+  private onVisibility = () => {
+    this.paused = document.hidden;
+    if (!document.hidden) this.lastTs = performance.now();
   };
 
   private onKey = (e: KeyboardEvent) => {
@@ -477,7 +444,7 @@ export class Game {
 
   private onPointerDown = (e: PointerEvent) => {
     if (this.mode !== "ready") return;
-    this.audio.unlock();
+    void this.audio.unlock();
     const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
     this.canvas.setPointerCapture(e.pointerId);
 
@@ -487,7 +454,6 @@ export class Game {
       return;
     }
 
-    // place tool
     const kind = this.selectedTool;
     const left = this.remainingTools[kind] ?? 0;
     if (left <= 0) return;
@@ -512,14 +478,13 @@ export class Game {
   private onPointerMove = (e: PointerEvent) => {
     if (!this.drawing || !this.draft) return;
     const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
-    const last = this.draft[this.draft.length - 1];
-    if (Math.hypot(p.x - last.x, p.y - last.y) < 6) return;
-    const nextLen = this.inkUsed + strokeLength([...this.draft, p]);
-    if (nextLen > this.level.inkLimit * TWEAKS.inkBudgetScale) {
-      this.showToast("Out of ink — undo or clear a line.");
-      return;
-    }
-    this.draft.push(p);
+    const result = appendDraftPoint(
+      this.draft,
+      p,
+      this.inkUsed,
+      this.level.inkLimit * TWEAKS.inkBudgetScale,
+    );
+    if (result.reason) this.showToast(result.reason);
   };
 
   private onPointerUp = () => {
@@ -528,11 +493,7 @@ export class Game {
       return;
     }
     this.drawing = false;
-    if (this.draft.length >= 2) {
-      const len = strokeLength(this.draft);
-      this.strokes.push({ points: this.draft });
-      this.inkUsed += len;
-    }
+    this.inkUsed += commitStroke(this.strokes, this.draft);
     this.draft = null;
     this.updateHud();
   };
@@ -554,16 +515,14 @@ export class Game {
   }
 
   private tick = (ts: number) => {
-    const dt = Math.min(0.033, Math.max(0, (ts - this.lastTs) / 1000));
+    const dt = this.paused ? 0 : Math.min(0.033, Math.max(0, (ts - this.lastTs) / 1000));
     this.lastTs = ts;
     this.clock += dt;
+    this.fx.update(dt);
 
-    if (this.toast && this.clock > this.toastUntil) {
-      this.toast = "";
-      this.els.toast.hidden = true;
-    }
+    if (this.clock > this.toastUntil) this.els.toast.hidden = true;
 
-    if (this.mode === "laying") {
+    if (this.mode === "laying" && !this.paused) {
       this.layTimer -= dt;
       if (this.layTimer <= 0) {
         this.layNextEgg();
@@ -575,10 +534,10 @@ export class Game {
       }
       this.physics.step(dt * 1000);
       this.collectStars();
-    } else if (this.mode === "running") {
+    } else if (this.mode === "running" && !this.paused) {
       this.elapsed += dt;
       if (this.elapsed > this.level.timeLimit) {
-        this.failMessage = "Time ran out before every egg reached the nest.";
+        this.failMessageText = failMessage("timeout");
         this.fail();
       } else {
         this.physics.step(dt * 1000);
@@ -605,6 +564,8 @@ export class Game {
       chickenPhase: this.chickenPhase,
       time: this.clock,
       crackedPositions: this.crackedPositions,
+      fx: this.fx,
+      reduceMotion: this.save.reduceMotion,
     });
 
     this.raf = requestAnimationFrame(this.tick);

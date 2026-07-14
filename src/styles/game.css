@@ -231,6 +231,20 @@ button {
   animation: 0.22s ease-out egg-pop;
 }
 
+.egg-preload {
+  z-index: 6;
+  background: linear-gradient(#bfeefa, #fff0c9);
+  place-items: center;
+  padding: 1rem;
+  display: grid;
+  inset: 0;
+  position: absolute;
+}
+
+.egg-preload[hidden] {
+  display: none !important;
+}
+
 .egg-overlay {
   z-index: 5;
   background: #445c8047;

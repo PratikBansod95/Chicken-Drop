@@ -1,6 +1,6 @@
 # Chicken Nest Run
 
-Farm physics puzzle — guide every egg from the hen into the nest basket.
+Farm physics puzzle — a hen lays eggs and you draw rails / place gadgets so **every egg** settles in the nest.
 
 ## Play locally
 
@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-## Build for production
+## Build
 
 ```bash
 npm run build
@@ -18,15 +18,22 @@ npm run preview
 
 ## Deploy on Vercel (via Git)
 
-1. Push this repo to GitHub / GitLab / Bitbucket.
-2. Import the project in [Vercel](https://vercel.com).
-3. Framework preset: **Vite** (build `npm run build`, output `dist`).
-4. Deploy.
+1. Push to GitHub.
+2. Import in [Vercel](https://vercel.com) — Framework Preset **Vite**, output `dist`.
+3. Deploy.
 
-The `Study/` folder is reference material only and is not used by the build.
+`Study/` is reference-only and is not used by the build.
 
 ## Rules
 
-- **Level 1:** hen lays **1** egg — nest it to win.
-- **Level 2+:** hen lays **3** or **5** eggs — **all** must settle in the basket.
-- Draw paths, place tools, then tap **Play**.
+| Level | Eggs | Win |
+|------|------|-----|
+| 1 | 1 | Nest that egg |
+| 2–50 | 3 or 5 | Nest **all** laid eggs |
+
+## Controls
+
+- Draw path · place tools · **Play**
+- Undo / Clear / Rotate / Delete
+- Mute · reduce motion
+- Keys: `R` reset, `Q`/`E` rotate, `Delete` remove tool
