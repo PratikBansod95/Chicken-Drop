@@ -82,30 +82,38 @@ export class PhysicsWorld {
   }
 
   private addBasket(pos: Vec2) {
-    const thick = 14;
-    const w = 130;
-    const h = 70;
-    const left = Bodies.rectangle(pos.x - w / 2 + thick / 2, pos.y - 6, thick, h, {
+    // Wide shallow bowl — room for ~5 eggs side-by-side
+    const thick = 12;
+    const w = 300;
+    const wallH = 42;
+    const floorY = pos.y + 22;
+    const rimY = pos.y + 2;
+
+    const left = Bodies.rectangle(pos.x - w / 2 + thick / 2, rimY, thick, wallH, {
       isStatic: true,
-      friction: 0.7,
-      restitution: 0.15,
+      friction: 0.85,
+      restitution: 0.08,
       label: "basket-rim",
-      chamfer: { radius: 4 },
+      chamfer: { radius: 5 },
+      angle: -0.12,
     });
-    const right = Bodies.rectangle(pos.x + w / 2 - thick / 2, pos.y - 6, thick, h, {
+    const right = Bodies.rectangle(pos.x + w / 2 - thick / 2, rimY, thick, wallH, {
       isStatic: true,
-      friction: 0.7,
-      restitution: 0.15,
+      friction: 0.85,
+      restitution: 0.08,
       label: "basket-rim",
-      chamfer: { radius: 4 },
+      chamfer: { radius: 5 },
+      angle: 0.12,
     });
-    const floor = Bodies.rectangle(pos.x, pos.y + h / 2 - thick / 2 - 4, w - thick * 1.4, thick, {
+    const floor = Bodies.rectangle(pos.x, floorY, w - thick * 1.1, thick, {
       isStatic: true,
-      friction: 0.95,
-      restitution: 0.05,
+      friction: 0.98,
+      restitution: 0.02,
       label: "basket-floor",
+      chamfer: { radius: 4 },
     });
-    const sensor = Bodies.rectangle(pos.x, pos.y + 8, w - 36, h - 18, {
+    // Large interior sensor so stacked / side-by-side eggs all register
+    const sensor = Bodies.rectangle(pos.x, pos.y + 6, w - 28, 70, {
       isStatic: true,
       isSensor: true,
       label: "nest-sensor",

@@ -4,8 +4,8 @@ import type { SaveData } from "./types";
 export const TWEAKS = {
   gravity: 1.05,
   breakImpulse: 0.085,
-  nestSettleSpeed: 1.35,
-  nestHoldFrames: 10,
+  nestSettleSpeed: 2.8,
+  nestHoldFrames: 8,
   bounceScale: 1,
   fanForce: 0.0042,
   eggLaySpacingMs: 420,
