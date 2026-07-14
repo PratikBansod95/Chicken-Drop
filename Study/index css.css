@@ -1,0 +1,382 @@
+html,body {
+    overscroll-behavior: none;
+    color: #21304a;
+    background: #bfeefa;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    font-family: Nunito,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
+    overflow: hidden
+}
+
+body {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    position: fixed;
+    inset: 0
+}
+
+[hidden] {
+    display: none!important
+}
+
+#app,.egg-game {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden
+}
+
+.egg-game {
+    -webkit-tap-highlight-color: transparent;
+    background: linear-gradient(#bfeefa,#fff0c9);
+    position: relative
+}
+
+.egg-canvas {
+    touch-action: none;
+    cursor: crosshair;
+    width: 100%;
+    height: 100%;
+    display: block;
+    position: absolute;
+    inset: 0
+}
+
+button {
+    font: inherit;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent
+}
+
+.egg-hud,.egg-top-actions,.egg-tray,.egg-editbar,.egg-toast,.egg-overlay {
+    z-index: 2;
+    position: absolute
+}
+
+.egg-hud {
+    pointer-events: none;
+    gap: .22rem;
+    display: grid;
+    inset-block-start: max(.55rem, env(safe-area-inset-top));
+    inset-inline-start: max(.55rem, env(safe-area-inset-left))
+}
+
+.egg-hud-main,.egg-hud-sub {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    background: #ffffff9e;
+    border: 2px solid #2b3a5921;
+    border-radius: .85rem;
+    align-items: center;
+    gap: .45rem;
+    width: max-content;
+    max-width: min(64vw,24rem);
+    padding: .22rem .55rem;
+    display: flex;
+    box-shadow: 0 .3rem #4860821a
+}
+
+.egg-hud-main {
+    color: #21304a;
+    font-size: clamp(1.35rem,5.4vw,2.35rem);
+    font-weight: 900;
+    line-height: .95
+}
+
+.egg-hud-main [data-field=stars] {
+    color: #ffbf42;
+    letter-spacing: .02em
+}
+
+.egg-hud-sub {
+    color: #21304abd;
+    font-size: clamp(.72rem,2.4vw,.92rem);
+    font-weight: 800
+}
+
+.egg-top-actions {
+    gap: .35rem;
+    display: flex;
+    inset-block-start: max(.55rem, env(safe-area-inset-top));
+    inset-inline-end: max(.55rem, env(safe-area-inset-right))
+}
+
+.egg-icon,.egg-small,.egg-tool,.egg-primary,.egg-secondary {
+    color: #21304a;
+    cursor: pointer;
+    background: #ffffffc2;
+    border: 2px solid #2b3a592b;
+    border-radius: 1rem;
+    font-weight: 900;
+    box-shadow: 0 .28rem #48608229
+}
+
+.egg-icon {
+    place-items: center;
+    width: clamp(2.45rem,10vw,3.2rem);
+    height: clamp(2.45rem,10vw,3.2rem);
+    padding: 0;
+    font-size: clamp(1.1rem,4vw,1.55rem);
+    display: grid
+}
+
+.egg-icon:active,.egg-small:active,.egg-tool:active,.egg-play:active,.egg-primary:active,.egg-secondary:active {
+    transform: translateY(2px);
+    box-shadow: 0 .12rem #4860822e
+}
+
+.egg-tray {
+    scrollbar-width: none;
+    justify-content: safe center;
+    gap: .45rem;
+    padding: .5rem .65rem;
+    display: flex;
+    inset-block-end: max(.5rem, env(safe-area-inset-bottom));
+    inset-inline: 0;
+    overflow-x: auto
+}
+
+.egg-tray::-webkit-scrollbar {
+    display: none
+}
+
+.egg-tool {
+    background: #f5faffd4;
+    flex: none;
+    align-content: center;
+    gap: .15rem;
+    min-width: clamp(4.8rem,17vw,6.8rem);
+    min-height: 4.1rem;
+    padding: .45rem .55rem;
+    font-size: clamp(.78rem,2.6vw,.9rem);
+    display: grid
+}
+
+.egg-tool strong {
+    color: #5d7aa3;
+    font-size: .82em
+}
+
+.egg-tool.is-selected {
+    background: #ffe4a8;
+    border-color: #d59943
+}
+
+.egg-tool:disabled {
+    opacity: .42
+}
+
+.egg-icon:disabled,.egg-small:disabled,.egg-play:disabled {
+    opacity: .42;
+    cursor: default
+}
+
+.egg-editbar {
+    inset-inline: max(.65rem, env(safe-area-inset-left)) max(.65rem, env(safe-area-inset-right));
+    justify-content: center;
+    gap: .35rem;
+    display: flex;
+    inset-block-end: calc(max(.5rem, env(safe-area-inset-bottom)) + 5.15rem)
+}
+
+.egg-small {
+    border-radius: .8rem;
+    min-height: 2.35rem;
+    padding: .35rem .62rem;
+    font-size: .85rem
+}
+
+.egg-toast {
+    pointer-events: none;
+    color: #21304a;
+    place-items: center;
+    font-weight: 900;
+    display: grid;
+    inset-block-start: 48%;
+    inset-inline: 0
+}
+
+.egg-toast:not([hidden]) {
+    animation: .22s ease-out egg-pop
+}
+
+.egg-toast {
+    text-align: center
+}
+
+.egg-toast:before {
+    content: ""
+}
+
+.egg-toast {
+    text-shadow: none;
+    padding: .4rem .7rem;
+    font-size: clamp(1rem,3.2vw,1.25rem)
+}
+
+.egg-overlay {
+    z-index: 5;
+    background: #445c8047;
+    place-items: center;
+    padding: 1rem;
+    display: grid;
+    inset: 0
+}
+
+.egg-intro-open .egg-top-actions,.egg-intro-open .egg-tray,.egg-intro-open .egg-editbar {
+    pointer-events: none;
+    opacity: .45
+}
+
+.egg-play {
+    color: #21304a;
+    cursor: pointer;
+    background: #ffca66;
+    border: 2px solid #d59943;
+    border-radius: 1rem;
+    min-width: clamp(4.8rem,18vw,6.4rem);
+    min-height: clamp(2.45rem,10vw,3.2rem);
+    padding: 0 .85rem;
+    font-size: clamp(.95rem,3.4vw,1.1rem);
+    font-weight: 900;
+    box-shadow: 0 .28rem #48608229
+}
+
+.egg-icon-wide {
+    width: clamp(2.45rem,10vw,3.2rem)
+}
+
+.egg-panel {
+    color: #21304a;
+    text-align: center;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    background: #ffffffb8;
+    border: 2px solid #2b3a5929;
+    border-radius: 1.5rem;
+    justify-items: center;
+    gap: .75rem;
+    width: min(86vw,24rem);
+    padding: 1.1rem;
+    display: grid;
+    box-shadow: 0 .55rem #48608224
+}
+
+.egg-panel h1,.egg-panel h2,.egg-panel p {
+    margin: 0
+}
+
+.egg-panel h1,.egg-panel h2 {
+    font-size: clamp(2.2rem,11vw,4rem);
+    font-weight: 900;
+    line-height: .95
+}
+
+.egg-panel p {
+    color: #21304ac2;
+    white-space: pre-line;
+    font-size: clamp(.95rem,2.8vw,1.05rem);
+    font-weight: 800
+}
+
+.egg-primary,.egg-secondary {
+    border-radius: 999px;
+    min-height: 2.8rem;
+    padding: .68rem 1.15rem
+}
+
+.egg-primary {
+    background: #ffca66;
+    border-color: #d59943
+}
+
+.egg-secondary {
+    background: #ffffffbf
+}
+
+.egg-result-stars {
+    color: #ffbf42;
+    font-size: clamp(2rem,8vw,3rem);
+    font-weight: 900;
+    line-height: 1
+}
+
+.egg-actions-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .55rem;
+    display: flex
+}
+
+@keyframes egg-pop {
+    0% {
+        opacity: 0;
+        transform: scale(.86)
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1)
+    }
+}
+
+@media (width<=560px) {
+    .egg-hud-main {
+        padding: .18rem .42rem;
+        font-size: clamp(1.05rem,5vw,1.45rem)
+    }
+
+    .egg-hud-sub {
+        gap: .3rem;
+        padding: .18rem .42rem;
+        font-size: .66rem
+    }
+
+    .egg-top-actions {
+        gap: .22rem
+    }
+
+    .egg-icon {
+        border-radius: .75rem;
+        width: 2.15rem;
+        height: 2.15rem;
+        font-size: 1rem
+    }
+}
+
+@media (width<=400px) {
+    .egg-hud-sub {
+        display: none
+    }
+
+    .egg-top-actions {
+        inset-block-start: calc(max(.55rem, env(safe-area-inset-top)) + 2.65rem);
+        inset-inline: max(.55rem, env(safe-area-inset-left)) max(.55rem, env(safe-area-inset-right));
+        justify-content: center
+    }
+}
+
+@media (height<=560px) {
+    .egg-hud-main {
+        font-size: clamp(1.05rem,4.7vw,1.6rem)
+    }
+
+    .egg-hud-sub {
+        display: none
+    }
+
+    .egg-tool {
+        min-height: 3.45rem
+    }
+
+    .egg-editbar {
+        inset-block-end: calc(max(.45rem, env(safe-area-inset-bottom)) + 4.4rem)
+    }
+}
