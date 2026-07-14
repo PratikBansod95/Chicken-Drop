@@ -4,12 +4,14 @@ import type { InkStroke, PlacedTool, PhysicsWorld } from "./physics";
 import { drawChicken } from "./entities/chicken";
 import { drawEgg } from "./entities/egg";
 import { drawBasket } from "./entities/basket";
+import { drawStar } from "./entities/star";
 import { drawTool } from "./entities/tools";
 import { drawHazard } from "./entities/hazards";
+import { drawBackdrop } from "./world/backdrop";
 import type { CameraFx } from "./systems/cameraFx";
 
 export function resizeCanvas(canvas: HTMLCanvasElement) {
-  const parent = canvas.parentElement!;
+  const parent = canvas.closest(".stage") as HTMLElement | null ?? canvas.parentElement!;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = parent.clientWidth;
   const h = parent.clientHeight;
@@ -34,50 +36,20 @@ export function worldFromClient(
   return { x: sx, y: sy };
 }
 
-function drawBackdrop(ctx: CanvasRenderingContext2D) {
-  const g = ctx.createLinearGradient(0, 0, 0, WORLD.height);
-  g.addColorStop(0, "#bfeefa");
-  g.addColorStop(0.55, "#d9f6ff");
-  g.addColorStop(1, "#fff0c9");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-
-  ctx.fillStyle = "#8fd48a";
-  ctx.beginPath();
-  ctx.moveTo(0, 980);
-  ctx.quadraticCurveTo(250, 920, 500, 970);
-  ctx.quadraticCurveTo(750, 1020, 1000, 950);
-  ctx.lineTo(1000, WORLD.height);
-  ctx.lineTo(0, WORLD.height);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffffcc";
-  for (const c of [
-    [160, 160, 50],
-    [420, 120, 40],
-    [780, 150, 55],
-  ] as const) {
-    ctx.beginPath();
-    ctx.ellipse(c[0], c[1], c[2] * 1.6, c[2] * 0.7, 0, 0, Math.PI * 2);
-    ctx.ellipse(c[0] + 30, c[1] + 8, c[2], c[2] * 0.55, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
 function drawInk(ctx: CanvasRenderingContext2D, strokes: InkStroke[], draft?: Vec2[]) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const all = draft ? [...strokes, { points: draft }] : strokes;
   for (const s of all) {
     if (s.points.length < 2) continue;
-    ctx.strokeStyle = "#574032";
-    ctx.lineWidth = 10;
+    ctx.strokeStyle = "rgba(87, 58, 44, 0.92)";
+    ctx.lineWidth = 12;
     ctx.beginPath();
     ctx.moveTo(s.points[0].x, s.points[0].y);
     for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
     ctx.stroke();
-    ctx.strokeStyle = "#e9a744";
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#f0b84a";
+    ctx.lineWidth = 6;
     ctx.stroke();
   }
 }
@@ -112,24 +84,8 @@ export function renderFrame(opts: {
 
   for (const star of level.stars) {
     if (star.collected) continue;
-    ctx.save();
-    ctx.translate(star.x, star.y);
-    ctx.fillStyle = "#ffbf42";
-    ctx.strokeStyle = "#d59943";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < 5; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI * 2) / 5;
-      const r = i % 2 === 0 ? 16 : 7;
-      const x = Math.cos(a) * r;
-      const y = Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    const pulse = opts.reduceMotion ? 1 : 1 + Math.sin(time * 4 + star.x * 0.01) * 0.06;
+    drawStar(ctx, star.x, star.y, pulse);
   }
 
   for (const obj of level.fixedObjects) {

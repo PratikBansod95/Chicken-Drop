@@ -13,6 +13,15 @@ export function drawEgg(
   ctx.translate(x, y);
   ctx.rotate(angle);
   ctx.scale(1 / Math.sqrt(squash), squash);
+
+  // contact shadow
+  if (!broken) {
+    ctx.fillStyle = "rgba(60,40,20,0.16)";
+    ctx.beginPath();
+    ctx.ellipse(0, EGG_RADIUS * 0.85, EGG_RADIUS * 0.7, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   if (broken) {
     ctx.fillStyle = "#f3e6c8";
     ctx.strokeStyle = "#8a6a3a";
@@ -36,19 +45,20 @@ export function drawEgg(
     ctx.arc(0, 8, 8, 0, Math.PI * 2);
     ctx.fill();
   } else {
-    const g = ctx.createRadialGradient(-6, -8, 4, 0, 0, EGG_RADIUS + 4);
-    g.addColorStop(0, "#fffaf0");
-    g.addColorStop(1, nested ? "#ffe4a3" : "#f5e6c8");
+    const g = ctx.createRadialGradient(-7, -10, 3, 0, 2, EGG_RADIUS + 6);
+    g.addColorStop(0, "#fffdf6");
+    g.addColorStop(0.55, nested ? "#ffe9b0" : "#f7e8c8");
+    g.addColorStop(1, nested ? "#f0c96a" : "#e6cfa0");
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(0, 0, EGG_RADIUS * 0.82, EGG_RADIUS, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#c9a66b";
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(160, 120, 70, 0.55)";
+    ctx.lineWidth = 2.4;
     ctx.stroke();
-    ctx.fillStyle = "#ffffffaa";
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.beginPath();
-    ctx.ellipse(-6, -8, 5, 7, -0.4, 0, Math.PI * 2);
+    ctx.ellipse(-6, -9, 5, 8, -0.35, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();

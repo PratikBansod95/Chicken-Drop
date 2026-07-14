@@ -1,3 +1,4 @@
+import { icons } from "./icons";
 import { TOOL_META, type GameMode, type SelectedTool, type ToolKind } from "../types";
 
 export function refreshTray(
@@ -14,9 +15,9 @@ export function refreshTray(
 
   const drawBtn = document.createElement("button");
   drawBtn.type = "button";
-  drawBtn.className = `egg-tool${opts.selectedTool === "draw" ? " is-selected" : ""}`;
-  drawBtn.innerHTML = `<span>✎ Draw</span><strong></strong>`;
+  drawBtn.className = `tool-card${opts.selectedTool === "draw" ? " is-selected" : ""}`;
   drawBtn.disabled = opts.mode !== "ready";
+  drawBtn.innerHTML = `${icons.draw}<span class="tool-card__label">Draw</span>`;
   drawBtn.addEventListener("click", () => opts.onSelect("draw"));
   tray.append(drawBtn);
 
@@ -25,9 +26,11 @@ export function refreshTray(
     const meta = TOOL_META[kind];
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `egg-tool${opts.selectedTool === kind ? " is-selected" : ""}`;
+    btn.className = `tool-card${opts.selectedTool === kind ? " is-selected" : ""}`;
     btn.disabled = opts.mode !== "ready" || left <= 0;
-    btn.innerHTML = `<span>${meta.label}</span><strong>${left}/${total}</strong>`;
+    btn.innerHTML = `<span class="tool-card__swatch" style="--swatch:${meta.color}"></span>
+      <span class="tool-card__label">${meta.label}</span>
+      <strong class="tool-card__count">${left}/${total}</strong>`;
     btn.addEventListener("click", () => {
       if (left <= 0 || opts.mode !== "ready") return;
       opts.onSelect(kind);

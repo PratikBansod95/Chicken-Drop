@@ -1,4 +1,5 @@
 import { AudioBus } from "./audio";
+import { assets } from "./assets/bank";
 import { generateLevel } from "./levels";
 import { PhysicsWorld, type InkStroke, type PlacedTool } from "./physics";
 import { renderFrame, resizeCanvas, worldFromClient } from "./render";
@@ -19,7 +20,8 @@ import { appendDraftPoint, commitStroke, strokeLength } from "./systems/inkDraw"
 import { failMessage, scoreStars } from "./systems/winLose";
 import { updateHud } from "./ui/hud";
 import { refreshTray } from "./ui/tray";
-import { shellHtml, showResult } from "./ui/overlays";
+import { shellHtml, showResult } from "./ui/shell";
+import { bindActions } from "./ui/actions";
 
 export class Game {
   private root: HTMLElement;
@@ -124,14 +126,13 @@ export class Game {
       this.fx.impulse(Math.min(8, s * 0.35));
     };
 
-    // Brief preload splash then show start
-    window.setTimeout(() => {
+    void assets.load().then(() => {
       this.els.preload.hidden = true;
       this.els.startOverlay.hidden = false;
       this.canvas.hidden = false;
       this.refreshTray();
       this.updateHud();
-    }, 500);
+    });
 
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame(this.tick);
@@ -149,35 +150,35 @@ export class Game {
   }
 
   private bindUi() {
-    const act = (name: string, fn: () => void | Promise<void>) => {
-      this.root.querySelector(`[data-action="${name}"]`)?.addEventListener("click", async () => {
-        await this.audio.unlock();
-        this.audio.play("tap");
-        await fn();
-      });
-    };
-    act("start", () => this.beginPlaySession());
-    act("play", () => this.startRun());
-    act("reset", () => this.resetLevel());
-    act("undo", () => this.undo());
-    act("clear", () => this.clearInk());
-    act("rotateLeft", () => this.rotateSelected(-1));
-    act("rotateRight", () => this.rotateSelected(1));
-    act("delete", () => this.deleteSelected());
-    act("resultNext", () => this.nextLevel());
-    act("resultRetry", () => this.resetLevel());
-    act("mute", () => {
-      this.save.muted = !this.save.muted;
-      this.audio.setMuted(this.save.muted);
-      writeSave(this.save);
-      this.updateHud();
-    });
-    act("motion", () => {
-      this.save.reduceMotion = !this.save.reduceMotion;
-      this.fx.reduceMotion = this.save.reduceMotion;
-      writeSave(this.save);
-      this.updateHud();
-    });
+    bindActions(
+      this.root,
+      () => this.audio.unlock(),
+      () => this.audio.play("tap"),
+      {
+        start: () => this.beginPlaySession(),
+        play: () => this.startRun(),
+        reset: () => this.resetLevel(),
+        undo: () => this.undo(),
+        clear: () => this.clearInk(),
+        rotateLeft: () => this.rotateSelected(-1),
+        rotateRight: () => this.rotateSelected(1),
+        delete: () => this.deleteSelected(),
+        resultNext: () => this.nextLevel(),
+        resultRetry: () => this.resetLevel(),
+        mute: () => {
+          this.save.muted = !this.save.muted;
+          this.audio.setMuted(this.save.muted);
+          writeSave(this.save);
+          this.updateHud();
+        },
+        motion: () => {
+          this.save.reduceMotion = !this.save.reduceMotion;
+          this.fx.reduceMotion = this.save.reduceMotion;
+          writeSave(this.save);
+          this.updateHud();
+        },
+      },
+    );
   }
 
   private async beginPlaySession() {
