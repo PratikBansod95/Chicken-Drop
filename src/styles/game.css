@@ -75,8 +75,6 @@ body {
   position: absolute;
   inset: 0;
   z-index: 2;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
 }
 
 .egg-canvas {
@@ -93,7 +91,10 @@ body {
 /* —— HUD —— */
 .hud {
   z-index: 3;
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -218,8 +219,11 @@ button {
 }
 
 .btn-icon {
+  flex: none;
   width: 2.65rem;
   height: 2.65rem;
+  min-width: 2.65rem;
+  min-height: 2.65rem;
   background: var(--panel);
   border: 2px solid var(--panel-edge);
 }
@@ -230,7 +234,10 @@ button {
 }
 
 .btn-play {
+  flex: none;
+  height: 2.75rem;
   min-height: 2.75rem;
+  max-height: 2.75rem;
   padding: 0 1rem 0 0.85rem;
   background: linear-gradient(180deg, #ffd56a 0%, var(--straw-deep) 100%);
   border: 2px solid #b4781c;
@@ -244,7 +251,11 @@ button {
 }
 
 .btn-chip {
+  flex: none;
+  align-self: center;
+  height: 2.35rem;
   min-height: 2.35rem;
+  max-height: 2.35rem;
   padding: 0 0.7rem;
   background: rgba(255, 255, 255, 0.82);
   border: 1.5px solid var(--panel-edge);
@@ -278,12 +289,16 @@ button {
 /* —— Dock —— */
 .dock {
   z-index: 3;
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: grid;
   gap: 0.45rem;
+  justify-items: center;
   padding: 0.4rem calc(0.65rem + var(--safe-r)) calc(0.55rem + var(--safe-b))
     calc(0.65rem + var(--safe-l));
-  background: linear-gradient(180deg, transparent, rgba(40, 55, 70, 0.08) 30%, rgba(40, 55, 70, 0.16));
+  background: linear-gradient(180deg, transparent, rgba(40, 55, 70, 0.1) 35%, rgba(40, 55, 70, 0.2));
   pointer-events: none;
 }
 
@@ -294,6 +309,7 @@ button {
 .dock-edit {
   display: flex;
   justify-content: center;
+  align-items: center;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
@@ -301,8 +317,10 @@ button {
 .dock-tools {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 0.45rem;
   overflow-x: auto;
+  max-width: 100%;
   padding: 0.15rem 0.1rem 0.25rem;
   scrollbar-width: none;
 }
@@ -313,12 +331,17 @@ button {
 
 .tool-card {
   flex: none;
+  align-self: center;
   display: grid;
   justify-items: center;
+  align-content: center;
   gap: 0.15rem;
-  min-width: 4.6rem;
-  min-height: 4.2rem;
-  padding: 0.45rem 0.5rem;
+  width: 4.8rem;
+  height: 4.35rem;
+  min-width: 4.8rem;
+  min-height: 4.35rem;
+  max-height: 4.35rem;
+  padding: 0.4rem 0.45rem;
   border-radius: var(--radius);
   background: var(--panel);
   border: 2px solid var(--panel-edge);
