@@ -28,9 +28,8 @@ export function scoreStars(opts: {
   timeLimit: number;
   starsCollected: number;
 }): number {
-  let stars = 1;
-  if (opts.inkUsed <= opts.parInk) stars += 1;
-  if (opts.placedCount <= opts.parTools && opts.elapsed <= opts.timeLimit * 0.78) stars += 1;
-  if (opts.starsCollected >= 2) stars = Math.min(3, stars + 1);
-  return Math.max(1, Math.min(3, stars));
+  const complete = 1;
+  const inkObjective = opts.inkUsed <= opts.parInk ? 1 : 0;
+  const routeObjective = opts.starsCollected >= 3 ? 1 : 0;
+  return complete + inkObjective + routeObjective;
 }

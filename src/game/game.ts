@@ -5,7 +5,7 @@ import { PhysicsWorld, type InkStroke, type PlacedTool } from "./physics";
 import { renderFrame, resizeCanvas, worldFromClient, type ViewState } from "./render";
 import { loadSave, writeSave } from "./save";
 import { TWEAKS } from "./tweaks";
-import { EGG_SPEC, NEST_SPEC, SIMULATION } from "./config/geometry";
+import { EGG_SPEC, SIMULATION } from "./config/geometry";
 import { TOOL_META } from "./types";
 import type {
   FailReason,
@@ -17,16 +17,20 @@ import type {
   Vec2,
 } from "./types";
 import { CameraFx } from "./systems/cameraFx";
+import {
+  inkSegmentIsBlocked,
+  pointIsProtected,
+  toolPlacementIsBlocked,
+} from "./systems/buildProtection";
 import { FixedStepClock } from "./systems/fixedStep";
 import { hitTestPlacedTool } from "./systems/selection";
 import { appendDraftPoint, commitStroke, strokeLength } from "./systems/inkDraw";
 import { failMessage, scoreStars } from "./systems/winLose";
 import { updateHud } from "./ui/hud";
+import { renderLevelMap } from "./ui/levelMap";
 import { refreshTray } from "./ui/tray";
 import { shellHtml, showResult } from "./ui/shell";
 import { bindActions } from "./ui/actions";
-
-const INK_PROTECTED_PADDING = 14;
 
 export class Game {
   private root: HTMLElement;
@@ -59,11 +63,14 @@ export class Game {
   private crackedPositions: Vec2[] = [];
   private failMessageText = "";
   private failAt = 0;
+  private spawnRetries = 0;
   private toastUntil = 0;
+  private invalidSpawnUntil = 0;
   private raf = 0;
   private lastTs = 0;
   private drawing = false;
   private paused = false;
+  private lastHudKey = "";
   private resizeObserver: ResizeObserver | null = null;
   private els!: {
     level: HTMLElement;
@@ -78,10 +85,21 @@ export class Game {
     resultTitle: HTMLElement;
     resultStars: HTMLElement;
     resultCopy: HTMLElement;
+    resultObjectives: HTMLElement;
+    resultNext: HTMLButtonElement;
+    resultEdit: HTMLButtonElement;
+    resultHint: HTMLButtonElement;
     startOverlay: HTMLElement;
     resultOverlay: HTMLElement;
+    mapOverlay: HTMLElement;
+    helpOverlay: HTMLElement;
+    campaignOverlay: HTMLElement;
+    levelMap: HTMLElement;
+    campaignProgress: HTMLElement;
+    campaignStars: HTMLElement;
     preload: HTMLElement;
     muteBtn: HTMLElement;
+    musicBtn: HTMLElement;
     motionBtn: HTMLElement;
   };
 
@@ -90,7 +108,8 @@ export class Game {
     this.save = loadSave();
     const prefersReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReduce) this.save.reduceMotion = true;
-    this.audio.setMuted(this.save.muted);
+    this.audio.setSfxMuted(this.save.sfxMuted);
+    this.audio.setMusicMuted(this.save.musicMuted);
     this.fx.reduceMotion = this.save.reduceMotion;
   }
 
@@ -111,15 +130,26 @@ export class Game {
       resultTitle: this.root.querySelector('[data-field="resultTitle"]')!,
       resultStars: this.root.querySelector('[data-field="resultStars"]')!,
       resultCopy: this.root.querySelector('[data-field="resultCopy"]')!,
+      resultObjectives: this.root.querySelector('[data-field="resultObjectives"]')!,
+      resultNext: this.root.querySelector('[data-field="resultNext"]')!,
+      resultEdit: this.root.querySelector('[data-field="resultEdit"]')!,
+      resultHint: this.root.querySelector('[data-field="resultHint"]')!,
       startOverlay: this.root.querySelector('[data-overlay="start"]')!,
       resultOverlay: this.root.querySelector('[data-overlay="result"]')!,
+      mapOverlay: this.root.querySelector('[data-overlay="map"]')!,
+      helpOverlay: this.root.querySelector('[data-overlay="help"]')!,
+      campaignOverlay: this.root.querySelector('[data-overlay="campaign"]')!,
+      levelMap: this.root.querySelector('[data-field="levelMap"]')!,
+      campaignProgress: this.root.querySelector('[data-field="campaignProgress"]')!,
+      campaignStars: this.root.querySelector('[data-field="campaignStars"]')!,
       preload: this.root.querySelector('[data-overlay="preload"]')!,
       muteBtn: this.root.querySelector('[data-action="mute"]')!,
+      musicBtn: this.root.querySelector('[data-action="music"]')!,
       motionBtn: this.root.querySelector('[data-action="motion"]')!,
     };
 
     this.bindUi();
-    this.loadLevel(this.save.unlockedLevel);
+    this.loadLevel(this.save.selectedLevel);
     this.onResize();
     window.addEventListener("resize", this.onResize);
     window.visualViewport?.addEventListener("resize", this.onResize);
@@ -182,10 +212,26 @@ export class Game {
         rotateRight: () => this.rotateSelected(1),
         delete: () => this.deleteSelected(),
         resultNext: () => this.nextLevel(),
-        resultRetry: () => this.resetLevel(),
+        resultRetry: () => this.retryBuild(),
+        resultEdit: () => this.editBuild(),
+        resultHint: () => this.applyHint(),
+        previous: () => this.previousLevel(),
+        map: () => this.openMap(),
+        closeMap: () => this.closeOverlay(this.els.mapOverlay),
+        help: () => this.openOverlay(this.els.helpOverlay),
+        closeHelp: () => this.closeOverlay(this.els.helpOverlay),
+        closeCampaign: () => this.closeOverlay(this.els.campaignOverlay),
         mute: () => {
-          this.save.muted = !this.save.muted;
-          this.audio.setMuted(this.save.muted);
+          this.save.sfxMuted = !this.save.sfxMuted;
+          this.save.muted = this.save.sfxMuted && this.save.musicMuted;
+          this.audio.setSfxMuted(this.save.sfxMuted);
+          writeSave(this.save);
+          this.updateHud();
+        },
+        music: () => {
+          this.save.musicMuted = !this.save.musicMuted;
+          this.save.muted = this.save.sfxMuted && this.save.musicMuted;
+          this.audio.setMusicMuted(this.save.musicMuted);
           writeSave(this.save);
           this.updateHud();
         },
@@ -206,17 +252,26 @@ export class Game {
     this.canvas.hidden = false;
     await this.audio.enableMusic();
     this.audio.play("cluck");
-    this.showToast(
-      this.level.eggCount === 1
-        ? "Guide the egg to the nest"
-        : `Get all ${this.level.eggCount} eggs in the nest`,
-    );
+    const tutorialKey = `level-${this.level.number}`;
+    if (this.level.tutorial && !this.save.tutorialsSeen.includes(tutorialKey)) {
+      this.showToast(this.level.tutorial);
+      this.save.tutorialsSeen.push(tutorialKey);
+      writeSave(this.save);
+    } else {
+      this.showToast(
+        this.level.eggCount === 1
+          ? "Guide the egg to the nest"
+          : `Get all ${this.level.eggCount} eggs in the nest`,
+      );
+    }
     this.refreshTray();
     this.updateHud();
   }
 
   private loadLevel(n: number) {
     this.level = generateLevel(n);
+    this.save.selectedLevel = this.level.number;
+    writeSave(this.save);
     this.strokes = [];
     this.draft = null;
     this.inkUsed = 0;
@@ -234,14 +289,16 @@ export class Game {
     this.crackedPositions = [];
     this.failMessageText = "";
     this.failAt = 0;
+    this.spawnRetries = 0;
     this.chickenPhase = "idle";
     this.mode = this.els.startOverlay.hidden ? "ready" : "intro";
     this.physics.resetLevel(this.level, [], []);
     this.els.resultOverlay.hidden = true;
-    this.els.startCopy.textContent =
-      this.level.eggCount === 1
-        ? "Level 1: the hen lays one egg.\nDraw a path to the nest, then tap Play."
-        : `This level: ${this.level.eggCount} eggs.\nEvery egg must settle in the nest.`;
+    this.els.startCopy.textContent = `${this.level.chapterName ?? "Campaign"} · ${this.level.name}\n${
+      this.level.eggCount
+    } egg${this.level.eggCount === 1 ? "" : "s"} · Complete, stay under ${
+      this.level.parInk
+    } ink, and collect all stars.`;
     this.refreshTray();
     this.updateHud();
   }
@@ -256,6 +313,14 @@ export class Game {
   }
 
   private nextLevel() {
+    if (this.mode !== "won") return;
+    if (this.level.number >= 50) {
+      this.els.resultOverlay.hidden = true;
+      const total = this.save.bestStars.reduce((sum, stars) => sum + stars, 0);
+      this.els.campaignStars.textContent = `${total}/150 stars`;
+      this.openOverlay(this.els.campaignOverlay);
+      return;
+    }
     const next = Math.min(50, this.level.number + 1);
     this.save.unlockedLevel = Math.max(this.save.unlockedLevel, next);
     writeSave(this.save);
@@ -269,12 +334,32 @@ export class Game {
     );
   }
 
+  private previousLevel() {
+    if (this.level.number <= 1 || this.mode === "laying" || this.mode === "running") return;
+    this.els.resultOverlay.hidden = true;
+    this.loadLevel(this.level.number - 1);
+    this.els.startOverlay.hidden = true;
+    this.root.classList.remove("egg-intro-open");
+    this.mode = "ready";
+    this.showToast(`Back to level ${this.level.number}`);
+  }
+
   private startRun() {
     if (this.mode !== "ready") {
       if (this.mode === "intro") this.showToast("Tap Start first");
       return;
     }
     this.physics.resetLevel(this.level, this.strokes, this.placed);
+    const spawnBase = {
+      x: this.level.start.x + EGG_SPEC.spawnOffset.x,
+      y: this.level.start.y + EGG_SPEC.spawnOffset.y,
+    };
+    if (!this.physics.canSpawnEgg(spawnBase)) {
+      this.physics.resetLevel(this.level, [], []);
+      this.invalidSpawnUntil = this.clock + 3;
+      this.showToast("The egg drop is blocked. Move the nearby rail or tool before Play.");
+      return;
+    }
     this.nestedCount = 0;
     this.eggsLaid = 0;
     this.eggsToLay = this.level.eggCount;
@@ -282,6 +367,7 @@ export class Game {
     this.fixedClock.reset();
     this.crackedPositions = [];
     this.failAt = 0;
+    this.spawnRetries = 0;
     this.collectedStars.clear();
     this.level.stars.forEach((s) => (s.collected = false));
     this.mode = "laying";
@@ -310,10 +396,18 @@ export class Game {
     ];
     const spawn = candidates.find((point) => this.physics.canSpawnEgg(point));
     if (!spawn) {
+      this.spawnRetries += 1;
+      if (this.spawnRetries >= 8) {
+        this.failMessageText = "The egg drop stayed blocked.";
+        this.editBuild();
+        this.showToast("Run stopped safely — clear the highlighted egg-drop area.");
+        return;
+      }
       this.layTimer = 0.12;
       this.showToast("Clear a little space below the hen");
       return;
     }
+    this.spawnRetries = 0;
 
     this.eggsLaid += 1;
     this.physics.spawnEgg(spawn, `egg-${this.eggsLaid}`);
@@ -366,11 +460,19 @@ export class Game {
     showResult(this.els, {
       won: true,
       stars,
+      finalLevel: this.level.number === 50,
       title: stars >= 3 ? "Perfect nest!" : "Eggs home!",
       copy:
-        this.eggsToLay === 1
+        this.level.number % 5 === 0 && this.level.number < 50
+          ? `Chapter ${this.level.chapter} complete! The next chapter is unlocked.`
+          : this.eggsToLay === 1
           ? "The egg settled safely in the nest."
           : `All ${this.eggsToLay} eggs settled in the nest.`,
+      objectives: [
+        { label: "Complete the level", met: true },
+        { label: `Use no more than ${this.level.parInk} ink`, met: this.inkUsed <= this.level.parInk },
+        { label: "Collect all route stars", met: this.collectedStars.size >= 3 },
+      ],
     });
     this.updateHud();
   }
@@ -379,12 +481,80 @@ export class Game {
     if (this.mode === "won" || this.mode === "failed") return;
     this.mode = "failed";
     this.audio.play("fail");
+    const failureIndex = this.level.number - 1;
+    this.save.failures[failureIndex] = (this.save.failures[failureIndex] ?? 0) + 1;
+    writeSave(this.save);
     showResult(this.els, {
       won: false,
       stars: 0,
       title: "Oh no!",
       copy: this.failMessageText || "Try a softer path.",
+      allowHint: (this.save.failures[failureIndex] ?? 0) >= 2,
+      objectives: [
+        { label: "Complete the level", met: false },
+        { label: `Use no more than ${this.level.parInk} ink`, met: this.inkUsed <= this.level.parInk },
+        { label: "Collect all route stars", met: this.collectedStars.size >= 3 },
+      ],
     });
+  }
+
+  private retryBuild() {
+    if (this.mode !== "failed") return;
+    this.els.resultOverlay.hidden = true;
+    this.mode = "ready";
+    this.startRun();
+  }
+
+  private editBuild() {
+    this.els.resultOverlay.hidden = true;
+    this.physics.resetLevel(this.level, this.strokes, this.placed);
+    this.mode = "ready";
+    this.chickenPhase = "idle";
+    this.refreshTray();
+    this.updateHud();
+  }
+
+  private applyHint() {
+    const solution = this.level.referenceSolution;
+    if (!solution) return;
+    this.strokes = structuredClone(solution.strokes);
+    this.placed = structuredClone(solution.tools);
+    this.inkUsed = this.strokes.reduce((sum, stroke) => sum + strokeLength(stroke.points), 0);
+    this.remainingTools = { ...this.level.tools };
+    for (const tool of this.placed) {
+      const kind = tool.type as ToolKind;
+      this.remainingTools[kind] = Math.max(0, (this.remainingTools[kind] ?? 0) - 1);
+    }
+    this.editBuild();
+    this.showToast("Hint build loaded. Press Play to study the route.");
+  }
+
+  private openOverlay(overlay: HTMLElement) {
+    overlay.hidden = false;
+    this.paused = true;
+    void this.audio.setLifecycleActive(false);
+    overlay.querySelector<HTMLElement>("button")?.focus();
+  }
+
+  private closeOverlay(overlay: HTMLElement) {
+    overlay.hidden = true;
+    this.paused = false;
+    void this.audio.setLifecycleActive(true);
+    this.canvas.focus();
+  }
+
+  private openMap() {
+    this.els.campaignOverlay.hidden = true;
+    renderLevelMap(this.els.levelMap, this.els.campaignProgress, this.save, (level) => {
+      this.closeOverlay(this.els.mapOverlay);
+      this.els.resultOverlay.hidden = true;
+      this.els.campaignOverlay.hidden = true;
+      this.loadLevel(level);
+      this.root.classList.remove("egg-intro-open");
+      this.els.startOverlay.hidden = true;
+      this.mode = "ready";
+    });
+    this.openOverlay(this.els.mapOverlay);
   }
 
   private undo() {
@@ -407,7 +577,20 @@ export class Game {
     if (this.mode !== "ready" || !this.selectedPlacedId) return;
     const obj = this.placed.find((p) => p.id === this.selectedPlacedId);
     if (!obj) return;
-    obj.angle += (dir * Math.PI) / 12;
+    const candidate = { ...obj, angle: obj.angle + (dir * Math.PI) / 12 };
+    if (
+      toolPlacementIsBlocked(
+        candidate,
+        this.level,
+        this.placed,
+        this.strokes,
+        obj.id,
+      )
+    ) {
+      this.showToast("Tool cannot overlap ink, hazards, or protected areas");
+      return;
+    }
+    obj.angle = candidate.angle;
   }
 
   private deleteSelected() {
@@ -448,6 +631,20 @@ export class Game {
   private updateHud() {
     const left = Math.max(0, Math.ceil(this.level.timeLimit - this.elapsed));
     const inkPct = Math.max(0, Math.round((1 - this.inkUsed / this.level.inkLimit) * 100));
+    const hudKey = [
+      this.level.number,
+      this.collectedStars.size,
+      left,
+      inkPct,
+      this.nestedCount,
+      this.eggsToLay || this.level.eggCount,
+      this.save.bestStars[this.level.number - 1] || 0,
+      this.save.sfxMuted,
+      this.save.musicMuted,
+      this.save.reduceMotion,
+    ].join("|");
+    if (hudKey === this.lastHudKey) return;
+    this.lastHudKey = hudKey;
     updateHud(this.els, {
       levelNumber: this.level.number,
       starsCollected: this.collectedStars.size,
@@ -456,7 +653,8 @@ export class Game {
       nested: this.nestedCount,
       totalEggs: this.eggsToLay || this.level.eggCount,
       best: this.save.bestStars[this.level.number - 1] || 0,
-      muted: this.save.muted,
+      sfxMuted: this.save.sfxMuted,
+      musicMuted: this.save.musicMuted,
       reduceMotion: this.save.reduceMotion,
     });
   }
@@ -467,10 +665,36 @@ export class Game {
 
   private onVisibility = () => {
     this.paused = document.hidden;
+    void this.audio.setLifecycleActive(!document.hidden);
     if (!document.hidden) this.lastTs = performance.now();
   };
 
   private onKey = (e: KeyboardEvent) => {
+    if (e.code === "Tab") {
+      const overlay = [this.els.helpOverlay, this.els.mapOverlay, this.els.campaignOverlay, this.els.resultOverlay]
+        .find((candidate) => !candidate.hidden);
+      if (overlay) {
+        const focusable = Array.from(
+          overlay.querySelectorAll<HTMLElement>("button:not(:disabled), [href], [tabindex]:not([tabindex='-1'])"),
+        ).filter((element) => !element.hidden);
+        if (focusable.length) {
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    }
+    if (e.code === "Escape") {
+      if (!this.els.helpOverlay.hidden) this.closeOverlay(this.els.helpOverlay);
+      else if (!this.els.mapOverlay.hidden) this.closeOverlay(this.els.mapOverlay);
+      return;
+    }
     if (e.code === "KeyR") {
       e.preventDefault();
       this.resetLevel();
@@ -481,54 +705,11 @@ export class Game {
   };
 
   private isProtectedBuildPoint(point: Vec2, ignorePlacedId?: string): boolean {
-    const spawn = {
-      x: this.level.start.x + EGG_SPEC.spawnOffset.x,
-      y: this.level.start.y + EGG_SPEC.spawnOffset.y,
-    };
-    if (
-      Math.hypot(point.x - spawn.x, point.y - spawn.y) <
-      EGG_SPEC.spawnClearance + 24
-    ) {
-      return true;
-    }
-    const nestX = (point.x - this.level.basket.x) / (NEST_SPEC.outerWidth / 2 + 16);
-    const nestY = (point.y - this.level.basket.y) / (NEST_SPEC.wallHeight / 2 + 24);
-    if (nestX * nestX + nestY * nestY < 1) return true;
-
-    const objects = [
-      ...this.level.fixedObjects,
-      ...this.placed.filter((placed) => placed.id !== ignorePlacedId),
-    ];
-    return objects.some((object) => {
-      const dx = point.x - object.x;
-      const dy = point.y - object.y;
-      const cos = Math.cos(-object.angle);
-      const sin = Math.sin(-object.angle);
-      const localX = dx * cos - dy * sin;
-      const localY = dx * sin + dy * cos;
-      const padding = INK_PROTECTED_PADDING;
-      return (
-        Math.abs(localX) <= object.w / 2 + padding &&
-        Math.abs(localY) <= object.h / 2 + padding
-      );
-    });
+    return pointIsProtected(point, this.level, this.placed, ignorePlacedId);
   }
 
   private segmentCrossesProtected(from: Vec2, to: Vec2): boolean {
-    const distance = Math.hypot(to.x - from.x, to.y - from.y);
-    const samples = Math.max(1, Math.ceil(distance / 8));
-    for (let index = 1; index <= samples; index++) {
-      const t = index / samples;
-      if (
-        this.isProtectedBuildPoint({
-          x: from.x + (to.x - from.x) * t,
-          y: from.y + (to.y - from.y) * t,
-        })
-      ) {
-        return true;
-      }
-    }
-    return false;
+    return inkSegmentIsBlocked(from, to, this.level, this.placed);
   }
 
   private onPointerDown = (e: PointerEvent) => {
@@ -548,12 +729,11 @@ export class Game {
       return;
     }
 
-    if (this.isProtectedBuildPoint(p)) {
-      this.showToast("Keep the hen and nest openings clear");
-      return;
-    }
-
     if (this.selectedTool === "draw") {
+      if (this.isProtectedBuildPoint(p)) {
+        this.showToast("Ink cannot start on tools, hazards, the hen, or the nest");
+        return;
+      }
       this.selectedPlacedId = null;
       this.drawing = true;
       this.draft = [p];
@@ -575,6 +755,10 @@ export class Game {
       dir: 1,
       bodyIds: [],
     };
+    if (toolPlacementIsBlocked(obj, this.level, this.placed, this.strokes)) {
+      this.showToast("Tool cannot overlap ink, hazards, or protected areas");
+      return;
+    }
     this.placed.push(obj);
     this.remainingTools[kind] = left - 1;
     this.selectedPlacedId = obj.id;
@@ -589,9 +773,25 @@ export class Game {
     if (!p) return;
     if (this.draggingPlacedId) {
       const tool = this.placed.find((placed) => placed.id === this.draggingPlacedId);
-      if (!tool || this.isProtectedBuildPoint(p, tool.id)) return;
-      tool.x = p.x - this.dragOffset.x;
-      tool.y = p.y - this.dragOffset.y;
+      if (!tool) return;
+      const candidate = {
+        ...tool,
+        x: p.x - this.dragOffset.x,
+        y: p.y - this.dragOffset.y,
+      };
+      if (
+        toolPlacementIsBlocked(
+          candidate,
+          this.level,
+          this.placed,
+          this.strokes,
+          tool.id,
+        )
+      ) {
+        return;
+      }
+      tool.x = candidate.x;
+      tool.y = candidate.y;
       return;
     }
     if (!this.drawing || !this.draft) return;
@@ -716,6 +916,8 @@ export class Game {
       fx: this.fx,
       reduceMotion: this.save.reduceMotion,
       selectedPlacedId: this.selectedPlacedId,
+      showBuildZones: this.mode === "ready" || this.mode === "intro",
+      invalidSpawn: this.clock < this.invalidSpawnUntil,
     });
 
     this.raf = requestAnimationFrame(this.tick);

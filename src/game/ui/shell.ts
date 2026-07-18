@@ -13,7 +13,7 @@ export function shellHtml(): string {
     </div>
 
     <div class="stage">
-      <canvas class="egg-canvas" hidden aria-label="Chicken Nest Run playfield"></canvas>
+      <canvas class="egg-canvas" hidden tabindex="0" aria-label="Chicken Nest Run playfield"></canvas>
 
       <header class="hud">
         <div class="hud-card hud-card--level">
@@ -31,14 +31,18 @@ export function shellHtml(): string {
         </div>
 
         <div class="hud-actions">
+          <button type="button" class="btn btn-icon" data-action="previous" aria-label="Previous level" title="Previous level">‹</button>
+          <button type="button" class="btn btn-icon" data-action="map" aria-label="Open level map" title="Levels">50</button>
+          <button type="button" class="btn btn-icon" data-action="help" aria-label="Open help" title="Help">?</button>
           <button type="button" class="btn btn-icon" data-action="motion" aria-label="Toggle motion" title="Motion">${icons.spark}</button>
-          <button type="button" class="btn btn-icon" data-action="mute" aria-label="Mute">${icons.unmute}</button>
+          <button type="button" class="btn btn-icon" data-action="music" aria-label="Mute music" title="Music">♫</button>
+          <button type="button" class="btn btn-icon" data-action="mute" aria-label="Mute sound effects" title="Sound effects">${icons.unmute}</button>
           <button type="button" class="btn btn-icon" data-action="reset" aria-label="Reset level">${icons.reset}</button>
           <button type="button" class="btn btn-play" data-action="play" aria-label="Run the eggs">${icons.play}<span>Play</span></button>
         </div>
       </header>
 
-      <div class="egg-toast" data-field="toast" hidden></div>
+      <div class="egg-toast" data-field="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
       <footer class="dock">
         <div class="dock-edit">
@@ -62,13 +66,56 @@ export function shellHtml(): string {
     </div>
 
     <div class="egg-overlay" data-overlay="result" hidden>
-      <div class="egg-panel">
-        <h2 data-field="resultTitle">Nice catch!</h2>
+      <div class="egg-panel" role="dialog" aria-modal="true" aria-labelledby="result-heading">
+        <h2 id="result-heading" data-field="resultTitle">Nice catch!</h2>
         <div class="egg-result-stars" data-field="resultStars">★★★</div>
         <p data-field="resultCopy">Every egg made it home.</p>
+        <div class="objective-list" data-field="resultObjectives"></div>
         <div class="egg-actions-row">
-          <button type="button" class="btn btn-cta" data-action="resultNext">Next</button>
+          <button type="button" class="btn btn-cta" data-action="resultNext" data-field="resultNext">Next</button>
+          <button type="button" class="btn btn-cta" data-action="resultEdit" data-field="resultEdit" hidden>Edit Build</button>
+          <button type="button" class="btn btn-ghost" data-action="resultHint" data-field="resultHint" hidden>Hint</button>
           <button type="button" class="btn btn-ghost" data-action="resultRetry">Retry</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="egg-overlay" data-overlay="map" hidden>
+      <div class="egg-panel egg-panel--map" role="dialog" aria-modal="true" aria-labelledby="map-heading">
+        <div class="overlay-heading">
+          <h2 id="map-heading">Level Map</h2>
+          <button type="button" class="btn btn-icon" data-action="closeMap" aria-label="Close level map">×</button>
+        </div>
+        <p data-field="campaignProgress"></p>
+        <div class="level-map-grid" data-field="levelMap"></div>
+      </div>
+    </div>
+
+    <div class="egg-overlay" data-overlay="help" hidden>
+      <div class="egg-panel egg-panel--help" role="dialog" aria-modal="true" aria-labelledby="help-heading">
+        <div class="overlay-heading">
+          <h2 id="help-heading">How to Play</h2>
+          <button type="button" class="btn btn-icon" data-action="closeHelp" aria-label="Close help">×</button>
+        </div>
+        <p>Draw rails or place tools, then press Play. Every egg must settle inside the nest.</p>
+        <ul>
+          <li>Tap a tool, then tap the field to place it.</li>
+          <li>Drag a placed tool to move it. Select it before rotating or deleting.</li>
+          <li>Ink and tools cannot cross the hen, nest, hazards, or other tools.</li>
+          <li>Avoid hard impacts, fire, pans, and spikes.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="egg-overlay" data-overlay="campaign" hidden>
+      <div class="egg-panel egg-panel--hero" role="dialog" aria-modal="true" aria-labelledby="campaign-heading">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <h2 id="campaign-heading">Master Nesters!</h2>
+        <div class="egg-result-stars" data-field="campaignStars">★★★</div>
+        <p>All 50 nests are complete. Replay levels to perfect every objective.</p>
+        <div class="egg-actions-row">
+          <button type="button" class="btn btn-cta" data-action="map">Replay Levels</button>
+          <button type="button" class="btn btn-ghost" data-action="closeCampaign">Keep Playing</button>
         </div>
       </div>
     </div>

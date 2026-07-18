@@ -14,15 +14,31 @@ type Sfx =
 /** Web Audio SFX + soft farm music loop (no external files required). */
 export class AudioBus {
   private ctx: AudioContext | null = null;
-  private muted = false;
+  private sfxMuted = false;
+  private musicMuted = false;
   private unlocked = false;
   private musicTimer: number | null = null;
   private musicOn = false;
 
   setMuted(muted: boolean) {
-    this.muted = muted;
+    this.setSfxMuted(muted);
+    this.setMusicMuted(muted);
+  }
+
+  setSfxMuted(muted: boolean) {
+    this.sfxMuted = muted;
+  }
+
+  setMusicMuted(muted: boolean) {
+    this.musicMuted = muted;
     if (muted) this.stopMusic();
     else if (this.unlocked && this.musicOn) this.startMusic();
+  }
+
+  async setLifecycleActive(active: boolean) {
+    if (!this.ctx) return;
+    if (active && this.ctx.state === "suspended") await this.ctx.resume();
+    if (!active && this.ctx.state === "running") await this.ctx.suspend();
   }
 
   async unlock() {
@@ -34,11 +50,11 @@ export class AudioBus {
   async enableMusic() {
     this.musicOn = true;
     await this.unlock();
-    if (!this.muted) this.startMusic();
+    if (!this.musicMuted) this.startMusic();
   }
 
   play(kind: Sfx) {
-    if (this.muted || !this.unlocked || !this.ctx) return;
+    if (this.sfxMuted || !this.unlocked || !this.ctx) return;
     const t = this.ctx.currentTime;
     switch (kind) {
       case "tap":
@@ -80,12 +96,10 @@ export class AudioBus {
   }
 
   private startMusic() {
-    if (!this.ctx || this.musicTimer != null || this.muted) return;
-    const prefs = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefs) return;
+    if (!this.ctx || this.musicTimer != null || this.musicMuted) return;
 
     const tick = () => {
-      if (!this.ctx || this.muted || !this.musicOn) return;
+      if (!this.ctx || this.musicMuted || !this.musicOn) return;
       const t = this.ctx.currentTime;
       const notes = [196, 247, 294, 330, 294, 247];
       notes.forEach((f, i) => {

@@ -1,19 +1,35 @@
 export type SpriteKey =
   | "chicken"
   | "egg"
+  | "eggCracked"
   | "nestBack"
   | "nestFront"
   | "nestShadow"
   | "star"
+  | "spring"
+  | "ramp"
+  | "pad"
+  | "fan"
+  | "belt"
+  | "sticky"
+  | "spike"
   | "backdrop";
 
 const PATHS: Record<SpriteKey, string> = {
   chicken: "/assets/sprites/chicken.png",
   egg: "/assets/sprites/egg.png",
+  eggCracked: "/assets/sprites/egg_cracked.png",
   nestBack: "/assets/sprites/nest_back.png",
   nestFront: "/assets/sprites/nest_front.png",
   nestShadow: "/assets/sprites/nest_shadow.png",
   star: "/assets/sprites/star.png",
+  spring: "/assets/sprites/spring.png",
+  ramp: "/assets/sprites/ramp.png",
+  pad: "/assets/sprites/pad.png",
+  fan: "/assets/sprites/fan.png",
+  belt: "/assets/sprites/belt.png",
+  sticky: "/assets/sprites/sticky.png",
+  spike: "/assets/sprites/spike.png",
   backdrop: "/assets/sprites/backdrop.jpg",
 };
 

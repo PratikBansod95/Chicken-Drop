@@ -2,7 +2,7 @@ import Matter from "matter-js";
 import { EGG_SPEC, NEST_SPEC } from "../config/geometry";
 import type { EggRuntime } from "../types";
 
-const { Query, Sleeping } = Matter;
+const { Body, Query, Sleeping } = Matter;
 
 /** Contact-based nest state machine; all timing is elapsed seconds, not render frames. */
 export function updateNestCapture(
@@ -18,9 +18,27 @@ export function updateNestCapture(
   const sensorBounds = nestSensor.bounds;
 
   for (const egg of eggs) {
-    if (egg.broken || egg.nested) continue;
+    if (egg.broken) continue;
     const body = getBody(egg.bodyId);
     if (!body) continue;
+
+    if (egg.nested) {
+      body.isSensor = true;
+      body.collisionFilter.mask = 0;
+      const x = Math.max(
+        sensorBounds.min.x + EGG_SPEC.radius,
+        Math.min(sensorBounds.max.x - EGG_SPEC.radius, body.position.x),
+      );
+      const y = Math.max(
+        sensorBounds.min.y + EGG_SPEC.radius,
+        Math.min(sensorBounds.max.y - EGG_SPEC.radius * 0.35, body.position.y),
+      );
+      if (x !== body.position.x || y !== body.position.y) Body.setPosition(body, { x, y });
+      Body.setVelocity(body, { x: 0, y: 0 });
+      Body.setAngularVelocity(body, 0);
+      Sleeping.set(body, true);
+      continue;
+    }
 
     const fullyInside =
       body.position.x >= sensorBounds.min.x + EGG_SPEC.radius &&
@@ -75,6 +93,10 @@ export function updateNestCapture(
     if (egg.settleTime >= NEST_SPEC.settleDurationSec) {
       egg.nested = true;
       egg.nestState = "captured";
+      body.isSensor = true;
+      body.collisionFilter.mask = 0;
+      Body.setVelocity(body, { x: 0, y: 0 });
+      Body.setAngularVelocity(body, 0);
       Sleeping.set(body, true);
       onNested(egg.id);
     }

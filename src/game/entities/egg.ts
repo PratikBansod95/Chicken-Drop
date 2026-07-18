@@ -24,27 +24,28 @@ export function drawEgg(
   }
 
   if (broken) {
-    ctx.fillStyle = "#f3e6c8";
-    ctx.strokeStyle = "#8a6a3a";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-14, -6);
-    ctx.lineTo(-4, 16);
-    ctx.lineTo(-18, 14);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(6, -10);
-    ctx.lineTo(18, 12);
-    ctx.lineTo(2, 16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#f6d96a88";
-    ctx.beginPath();
-    ctx.arc(0, 8, 8, 0, Math.PI * 2);
-    ctx.fill();
+    const cracked = assets.get("eggCracked");
+    if (cracked) {
+      ctx.drawImage(cracked, -34, -34, 68, 68);
+    } else {
+      ctx.fillStyle = "#f3e6c8";
+      ctx.strokeStyle = "#8a6a3a";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-14, -6);
+      ctx.lineTo(-4, 16);
+      ctx.lineTo(-18, 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(6, -10);
+      ctx.lineTo(18, 12);
+      ctx.lineTo(2, 16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
   } else {
     const img = assets.get("egg");
     if (img) {

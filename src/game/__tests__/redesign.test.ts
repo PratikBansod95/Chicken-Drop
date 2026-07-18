@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import Matter from "matter-js";
 import { SIMULATION } from "../config/geometry";
 import { PhysicsWorld } from "../engine";
 import { generateLevel, validateLevelGeometry } from "../levels/generator";
+import { inkSegmentIsBlocked, toolPlacementIsBlocked } from "../systems/buildProtection";
 import { FixedStepClock } from "../systems/fixedStep";
-import type { LevelData } from "../types";
+import type { FixedObject, LevelData, PlacedTool } from "../types";
 
 function emptyLevel(eggCount = 1): LevelData {
   return {
@@ -27,6 +29,39 @@ function step(world: PhysicsWorld, frames: number) {
 }
 
 describe("fixed-step redesign", () => {
+  it("builds physics bodies for every production tool and hazard", () => {
+    const kinds: FixedObject["type"][] = [
+      "spring",
+      "ramp",
+      "pad",
+      "fan",
+      "conveyor",
+      "sticky",
+      "spike",
+      "fire",
+      "pan",
+    ];
+    const level = emptyLevel();
+    level.fixedObjects = kinds.map((type, index) => ({
+      id: `${type}-test`,
+      type,
+      x: 100 + index * 90,
+      y: 520,
+      w: type === "pan" ? 170 : 100,
+      h: type === "spring" ? 90 : 64,
+      angle: 0,
+      fixed: true,
+      dir: 1,
+    }));
+    const world = new PhysicsWorld();
+    world.resetLevel(level, [], []);
+    for (const object of level.fixedObjects) {
+      expect(object.bodyIds, object.type).toHaveLength(1);
+      expect(world.getBodyById(object.bodyIds![0])?.label).toBe(object.type);
+    }
+    world.destroy();
+  });
+
   it.each([30, 60, 120])("produces 60 physics steps per second at %i Hz", (hz) => {
     const clock = new FixedStepClock();
     let steps = 0;
@@ -61,6 +96,31 @@ describe("fixed-step redesign", () => {
     const body = world.getEggBody(egg)!;
     expect(body.position.x).toBeGreaterThan(240);
     expect(Math.abs(body.angle)).toBeGreaterThan(0.15);
+    world.destroy();
+  });
+
+  it("rolls an egg down the wooden ramp tool", () => {
+    const world = new PhysicsWorld();
+    world.resetLevel(
+      emptyLevel(),
+      [],
+      [
+        {
+          id: "ramp-test",
+          type: "ramp",
+          x: 420,
+          y: 470,
+          angle: 0,
+          w: 120,
+          h: 100,
+          dir: 1,
+          bodyIds: [],
+        },
+      ],
+    );
+    const egg = world.spawnEgg({ x: 445, y: 365 }, "egg-1");
+    step(world, 100);
+    expect(world.getEggBody(egg)!.position.x).toBeLessThan(405);
     world.destroy();
   });
 
@@ -121,6 +181,20 @@ describe("fixed-step redesign", () => {
     expect(eggs.every((egg) => egg.nested)).toBe(true);
     world.destroy();
   });
+
+  it("keeps captured eggs inside the visible nest", () => {
+    const world = new PhysicsWorld();
+    world.resetLevel(emptyLevel(), [], []);
+    const egg = world.spawnEgg({ x: 500, y: 900 }, "egg-1");
+    step(world, 240);
+    const body = world.getEggBody(egg)!;
+    Matter.Sleeping.set(body, false);
+    Matter.Body.setVelocity(body, { x: 24, y: -8 });
+    step(world, 20);
+    expect(egg.nested).toBe(true);
+    expect(Math.abs(body.position.x - 500)).toBeLessThanOrEqual(122);
+    world.destroy();
+  });
 });
 
 describe("generated levels", () => {
@@ -128,6 +202,67 @@ describe("generated levels", () => {
     for (let level = 1; level <= 50; level++) {
       expect(validateLevelGeometry(generateLevel(level)), `level ${level}`).toEqual([]);
     }
+  });
+});
+
+describe("protected build geometry", () => {
+  const hazard = {
+    id: "hazard",
+    type: "spike" as const,
+    x: 500,
+    y: 500,
+    angle: Math.PI / 5,
+    w: 120,
+    h: 60,
+    fixed: true,
+  };
+
+  it("blocks a fast pointer segment crossing a rotated hazard", () => {
+    const level = { ...emptyLevel(), fixedObjects: [hazard] };
+    expect(
+      inkSegmentIsBlocked({ x: 250, y: 500 }, { x: 750, y: 500 }, level, []),
+    ).toBe(true);
+    expect(
+      inkSegmentIsBlocked({ x: 250, y: 350 }, { x: 750, y: 350 }, level, []),
+    ).toBe(false);
+  });
+
+  it("blocks a tool whose footprint overlaps existing ink", () => {
+    const tool: PlacedTool = {
+      id: "ramp",
+      type: "ramp",
+      x: 500,
+      y: 500,
+      angle: 0,
+      w: 120,
+      h: 100,
+      dir: 1,
+      bodyIds: [],
+    };
+    expect(
+      toolPlacementIsBlocked(
+        tool,
+        emptyLevel(),
+        [],
+        [{ points: [{ x: 400, y: 500 }, { x: 600, y: 500 }] }],
+      ),
+    ).toBe(true);
+  });
+
+  it("checks the complete tool footprint against hazards", () => {
+    const level = { ...emptyLevel(), fixedObjects: [hazard] };
+    const tool: PlacedTool = {
+      id: "pad",
+      type: "pad",
+      x: 615,
+      y: 500,
+      angle: 0,
+      w: 110,
+      h: 62,
+      dir: 1,
+      bodyIds: [],
+    };
+    expect(toolPlacementIsBlocked(tool, level, [], [])).toBe(true);
   });
 });
 

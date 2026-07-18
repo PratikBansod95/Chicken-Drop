@@ -1,6 +1,15 @@
 import { icons } from "./icons";
 import { TOOL_META, type GameMode, type SelectedTool, type ToolKind } from "../types";
 
+const TOOL_IMAGES: Record<ToolKind, string> = {
+  spring: "/assets/sprites/spring.png",
+  ramp: "/assets/sprites/ramp.png",
+  pad: "/assets/sprites/pad.png",
+  fan: "/assets/sprites/fan.png",
+  conveyor: "/assets/sprites/belt.png",
+  sticky: "/assets/sprites/sticky.png",
+};
+
 export function refreshTray(
   tray: HTMLElement,
   opts: {
@@ -28,7 +37,7 @@ export function refreshTray(
     btn.type = "button";
     btn.className = `tool-card${opts.selectedTool === kind ? " is-selected" : ""}`;
     btn.disabled = opts.mode !== "ready" || left <= 0;
-    btn.innerHTML = `<span class="tool-card__swatch" style="--swatch:${meta.color}"></span>
+    btn.innerHTML = `<img class="tool-card__sprite" src="${TOOL_IMAGES[kind]}" alt="" draggable="false">
       <span class="tool-card__label">${meta.label}</span>
       <strong class="tool-card__count">${left}/${total}</strong>`;
     btn.addEventListener("click", () => {

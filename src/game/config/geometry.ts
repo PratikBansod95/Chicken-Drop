@@ -19,7 +19,7 @@ export const EGG_SPEC = {
   maxAngularSpeed: 0.42,
   spawnOffset: { x: -12, y: 54 } satisfies Vec2,
   spawnClearance: 58,
-  laySpacingSec: 0.68,
+  laySpacingSec: 1.15,
 } as const;
 
 export const NEST_SPEC = {

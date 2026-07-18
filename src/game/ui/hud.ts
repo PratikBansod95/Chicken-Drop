@@ -12,6 +12,7 @@ export interface HudEls {
   nest: HTMLElement;
   best: HTMLElement;
   muteBtn: HTMLElement;
+  musicBtn: HTMLElement;
   motionBtn: HTMLElement;
 }
 
@@ -25,7 +26,8 @@ export function updateHud(
     nested: number;
     totalEggs: number;
     best: number;
-    muted: boolean;
+    sfxMuted: boolean;
+    musicMuted: boolean;
     reduceMotion: boolean;
   },
 ) {
@@ -35,6 +37,13 @@ export function updateHud(
   els.ink.textContent = `Ink ${opts.inkPct}%`;
   els.nest.textContent = `Nest ${opts.nested}/${opts.totalEggs}`;
   els.best.textContent = `Best ${starString(opts.best)}`;
-  els.muteBtn.innerHTML = opts.muted ? icons.mute : icons.unmute;
+  els.muteBtn.innerHTML = opts.sfxMuted ? icons.mute : icons.unmute;
+  els.muteBtn.setAttribute("aria-label", opts.sfxMuted ? "Enable sound effects" : "Mute sound effects");
+  els.musicBtn.textContent = opts.musicMuted ? "♩" : "♫";
+  els.musicBtn.setAttribute("aria-label", opts.musicMuted ? "Enable music" : "Mute music");
   els.motionBtn.classList.toggle("is-active", !opts.reduceMotion);
+  els.motionBtn.setAttribute(
+    "aria-label",
+    opts.reduceMotion ? "Enable full motion" : "Reduce motion",
+  );
 }

@@ -127,6 +127,16 @@ export class PhysicsWorld {
           );
         }
         break;
+      case "ramp":
+        body = Bodies.rectangle(obj.x, obj.y + obj.h * 0.04, obj.w * 0.88, 14, {
+          ...common,
+          angle: obj.angle - 0.58,
+          restitution: 0.1,
+          friction: 0.075,
+          frictionStatic: 0.32,
+          chamfer: { radius: 7 },
+        });
+        break;
       case "pad":
         body = Bodies.rectangle(obj.x, obj.y, obj.w, obj.h * 0.55, {
           ...common,
@@ -258,6 +268,7 @@ export class PhysicsWorld {
   spawnEgg(at: Vec2, id: string): EggRuntime {
     const body = this.track(Bodies.circle(at.x, at.y, EGG_SPEC.radius, {
       label: `egg:${id}`,
+      collisionFilter: { group: -1 },
       restitution: EGG_SPEC.restitution,
       friction: EGG_SPEC.friction,
       frictionStatic: EGG_SPEC.frictionStatic,
@@ -319,7 +330,10 @@ export class PhysicsWorld {
       return;
     }
 
-    if (isStart && (kind === "ink" || kind === "basket-rim" || kind === "spring" || kind === "pad")) {
+    if (
+      isStart &&
+      ["ink", "basket-rim", "spring", "ramp", "pad"].includes(kind)
+    ) {
       const impact = Math.hypot(eggBody.velocity.x, eggBody.velocity.y);
       if (impact > 4.5) this.onBounce?.(impact);
       if (kind === "spring") {
@@ -424,7 +438,9 @@ export class PhysicsWorld {
     Engine.update(this.engine, dtMs);
 
     const rollingSurfaces = Composite.allBodies(this.engine.world).filter((body) =>
-      ["ink", "basket-floor", "pad", "spring", "conveyor", "sticky"].includes(body.label),
+      ["ink", "basket-floor", "pad", "spring", "ramp", "conveyor", "sticky"].includes(
+        body.label,
+      ),
     );
     for (const egg of this.eggs) {
       if (egg.broken || egg.nested) continue;

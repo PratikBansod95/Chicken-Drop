@@ -1,4 +1,14 @@
 import type { FixedObject, PlacedTool } from "../types";
+import { assets, type SpriteKey } from "../assets/bank";
+
+const TOOL_SPRITES: Partial<Record<FixedObject["type"], SpriteKey>> = {
+  spring: "spring",
+  ramp: "ramp",
+  pad: "pad",
+  fan: "fan",
+  conveyor: "belt",
+  sticky: "sticky",
+};
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -19,17 +29,25 @@ function roundRect(
 }
 
 export function drawTool(ctx: CanvasRenderingContext2D, obj: FixedObject | PlacedTool) {
-  if (!["spring", "pad", "fan", "conveyor", "sticky"].includes(obj.type)) return;
+  if (!["spring", "ramp", "pad", "fan", "conveyor", "sticky"].includes(obj.type)) return;
 
   ctx.save();
   ctx.translate(obj.x, obj.y);
   ctx.rotate(obj.angle);
 
+  const spriteKey = TOOL_SPRITES[obj.type];
+  const sprite = spriteKey ? assets.get(spriteKey) : null;
+  if (sprite) {
+    ctx.drawImage(sprite, -obj.w / 2, -obj.h / 2, obj.w, obj.h);
+    ctx.restore();
+    return;
+  }
+
   ctx.fillStyle = "rgba(40,50,70,0.15)";
   roundRect(ctx, -obj.w / 2 + 3, -obj.h / 2 + 5, obj.w, obj.h * 0.7, 12);
   ctx.fill();
 
-  if (obj.type === "spring") {
+  if (obj.type === "spring" || obj.type === "ramp") {
     ctx.strokeStyle = "#2f8f4e";
     ctx.lineWidth = 6;
     ctx.lineCap = "round";

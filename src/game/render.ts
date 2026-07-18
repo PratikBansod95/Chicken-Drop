@@ -1,7 +1,7 @@
 import { WORLD } from "./types";
 import type { LevelData, Vec2 } from "./types";
 import type { InkStroke, PlacedTool, PhysicsWorld } from "./physics";
-import { INK_SPEC } from "./config/geometry";
+import { EGG_SPEC, INK_SPEC } from "./config/geometry";
 import { drawChicken } from "./entities/chicken";
 import { drawEgg } from "./entities/egg";
 import { drawNestBack, drawNestFront } from "./entities/nest";
@@ -30,8 +30,13 @@ export function resizeCanvas(canvas: HTMLCanvasElement) {
   canvas.style.height = `${h}px`;
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const topUi = Math.min(112, h * 0.13);
-  const bottomUi = Math.min(146, h * 0.16);
+  const gameRoot = canvas.closest(".egg-game");
+  const rootRect = gameRoot?.getBoundingClientRect();
+  const hudRect = gameRoot?.querySelector(".hud")?.getBoundingClientRect();
+  const dockRect = gameRoot?.querySelector(".bottom-dock")?.getBoundingClientRect();
+  const topUi = rootRect && hudRect ? Math.max(0, hudRect.bottom - rootRect.top + 8) : 112;
+  const bottomUi =
+    rootRect && dockRect ? Math.max(0, rootRect.bottom - dockRect.top + 8) : 146;
   const playHeight = Math.max(320, h - topUi - bottomUi);
   const scale = Math.min(w / WORLD.width, playHeight / WORLD.height);
   return {
@@ -155,6 +160,8 @@ export function renderFrame(opts: {
   fx: CameraFx;
   reduceMotion: boolean;
   selectedPlacedId: string | null;
+  showBuildZones?: boolean;
+  invalidSpawn?: boolean;
 }) {
   const { canvas, view, level, physics, strokes, draft, placed, chickenPhase, time, fx } = opts;
   const ctx = canvas.getContext("2d")!;
@@ -193,17 +200,33 @@ export function renderFrame(opts: {
     const body = obj.bodyIds?.[0] != null ? physics.getBodyById(obj.bodyIds[0]) : null;
     const rendered = body ? { ...obj, angle: body.angle } : obj;
     drawTool(ctx, rendered);
-    drawHazard(ctx, rendered);
+    drawHazard(ctx, rendered, time);
   }
   for (const obj of placed) {
     const body = obj.bodyIds[0] != null ? physics.getBodyById(obj.bodyIds[0]) : null;
     const rendered = body ? { ...obj, angle: body.angle } : obj;
     drawTool(ctx, rendered);
-    drawHazard(ctx, rendered);
+    drawHazard(ctx, rendered, time);
     if (opts.selectedPlacedId === obj.id) drawSelection(ctx, obj, time);
   }
   drawWind(ctx, level, placed, time, opts.reduceMotion);
   drawInk(ctx, strokes, draft ?? undefined);
+  if (opts.showBuildZones) {
+    const spawn = {
+      x: level.start.x + EGG_SPEC.spawnOffset.x,
+      y: level.start.y + EGG_SPEC.spawnOffset.y,
+    };
+    ctx.save();
+    ctx.setLineDash([10, 8]);
+    ctx.lineWidth = opts.invalidSpawn ? 6 : 3;
+    ctx.strokeStyle = opts.invalidSpawn ? "#d33b32" : "rgba(45, 82, 112, 0.38)";
+    ctx.fillStyle = opts.invalidSpawn ? "rgba(225, 60, 48, 0.16)" : "rgba(255, 255, 255, 0.08)";
+    ctx.beginPath();
+    ctx.arc(spawn.x, spawn.y, EGG_SPEC.spawnClearance + 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
   drawChicken(ctx, level.start, chickenPhase, time, opts.reduceMotion);
 
   for (const egg of physics.eggs) {
