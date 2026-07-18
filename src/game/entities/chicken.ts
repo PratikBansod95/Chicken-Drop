@@ -9,7 +9,7 @@ export function drawChicken(
   reduceMotion: boolean,
 ) {
   const bob = reduceMotion ? 0 : phase === "lay" ? Math.sin(t * 12) * 5 : Math.sin(t * 2.4) * 2.5;
-  const img = assets.get(phase === "lay" ? "chicken_lay" : "chicken") ?? assets.get("chicken");
+  const img = assets.get("chicken");
   ctx.save();
   ctx.translate(pos.x, pos.y + bob);
   const squish = phase === "lay" && !reduceMotion ? 1 + Math.sin(t * 14) * 0.04 : 1;
@@ -20,6 +20,7 @@ export function drawChicken(
     const h = 118;
     ctx.drawImage(img, -w * 0.42, -h * 0.62, w, h);
   } else {
+    // fallback silhouette
     ctx.fillStyle = "#f7f1e6";
     ctx.beginPath();
     ctx.ellipse(0, 8, 38, 30, 0, 0, Math.PI * 2);
@@ -29,7 +30,7 @@ export function drawChicken(
     ctx.stroke();
   }
 
-  if (phase === "lay" && !assets.get("chicken_lay")) {
+  if (phase === "lay") {
     ctx.fillStyle = "rgba(255, 232, 163, 0.95)";
     ctx.beginPath();
     ctx.ellipse(-18, 42, 11, 13, 0.12, 0, Math.PI * 2);

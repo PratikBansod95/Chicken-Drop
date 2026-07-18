@@ -1,5 +1,4 @@
 import { EGG_RADIUS } from "../types";
-import { assets } from "../assets/bank";
 
 export function drawEgg(
   ctx: CanvasRenderingContext2D,
@@ -15,6 +14,7 @@ export function drawEgg(
   ctx.rotate(angle);
   ctx.scale(1 / Math.sqrt(squash), squash);
 
+  // contact shadow
   if (!broken) {
     ctx.fillStyle = "rgba(60,40,20,0.16)";
     ctx.beginPath();
@@ -22,18 +22,7 @@ export function drawEgg(
     ctx.fill();
   }
 
-  const img = assets.get(broken ? "egg_cracked" : "egg");
-  if (img) {
-    const w = EGG_RADIUS * 2.1;
-    const h = EGG_RADIUS * 2.5;
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
-    if (nested && !broken) {
-      ctx.fillStyle = "rgba(255, 200, 80, 0.22)";
-      ctx.beginPath();
-      ctx.ellipse(0, 0, EGG_RADIUS * 0.82, EGG_RADIUS, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (broken) {
+  if (broken) {
     ctx.fillStyle = "#f3e6c8";
     ctx.strokeStyle = "#8a6a3a";
     ctx.lineWidth = 2;

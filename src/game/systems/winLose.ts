@@ -19,13 +19,6 @@ export function failMessage(reason: FailReason, eggLabel?: string): string {
   }
 }
 
-export interface StarBreakdown {
-  total: number;
-  ink: boolean;
-  toolsOrSpeed: boolean;
-  collectibles: boolean;
-}
-
 export function scoreStars(opts: {
   inkUsed: number;
   parInk: number;
@@ -34,17 +27,10 @@ export function scoreStars(opts: {
   elapsed: number;
   timeLimit: number;
   starsCollected: number;
-}): StarBreakdown {
-  const ink = opts.inkUsed <= opts.parInk;
-  const toolsOrSpeed = opts.placedCount <= opts.parTools && opts.elapsed <= opts.timeLimit * 0.78;
-  const collectibles = opts.starsCollected >= 2;
-  let total = 1;
-  if (ink) total += 1;
-  if (toolsOrSpeed || collectibles) total += 1;
-  // Prefer awarding third star from tools/speed; collectibles can substitute if tools over par but 2+ stars grabbed
-  if (!toolsOrSpeed && collectibles && total < 3) {
-    /* already counted */
-  }
-  total = Math.max(1, Math.min(3, total));
-  return { total, ink, toolsOrSpeed, collectibles };
+}): number {
+  let stars = 1;
+  if (opts.inkUsed <= opts.parInk) stars += 1;
+  if (opts.placedCount <= opts.parTools && opts.elapsed <= opts.timeLimit * 0.78) stars += 1;
+  if (opts.starsCollected >= 2) stars = Math.min(3, stars + 1);
+  return Math.max(1, Math.min(3, stars));
 }

@@ -1,5 +1,4 @@
-import type { FixedObject, PlacedTool, ToolKind } from "../types";
-import { assets, type SpriteKey } from "../assets/bank";
+import type { FixedObject, PlacedTool } from "../types";
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -19,28 +18,12 @@ function roundRect(
   ctx.closePath();
 }
 
-const SPRITE: Partial<Record<ToolKind | "conveyor", SpriteKey>> = {
-  spring: "spring",
-  pad: "pad",
-  fan: "fan",
-  conveyor: "belt",
-  sticky: "sticky",
-};
-
 export function drawTool(ctx: CanvasRenderingContext2D, obj: FixedObject | PlacedTool) {
   if (!["spring", "pad", "fan", "conveyor", "sticky"].includes(obj.type)) return;
 
   ctx.save();
   ctx.translate(obj.x, obj.y);
   ctx.rotate(obj.angle);
-
-  const key = SPRITE[obj.type as ToolKind | "conveyor"];
-  const img = key ? assets.get(key) : null;
-  if (img) {
-    ctx.drawImage(img, -obj.w / 2, -obj.h / 2, obj.w, obj.h);
-    ctx.restore();
-    return;
-  }
 
   ctx.fillStyle = "rgba(40,50,70,0.15)";
   roundRect(ctx, -obj.w / 2 + 3, -obj.h / 2 + 5, obj.w, obj.h * 0.7, 12);

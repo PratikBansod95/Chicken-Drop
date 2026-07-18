@@ -31,12 +31,10 @@ export function updateHud(
 ) {
   els.level.textContent = String(opts.levelNumber);
   els.stars.textContent = starString(opts.starsCollected);
-  els.stars.title = "Collectible stars this run";
   els.timer.textContent = `${Math.floor(opts.timeLeft / 60)}:${String(opts.timeLeft % 60).padStart(2, "0")}`;
   els.ink.textContent = `Ink ${opts.inkPct}%`;
   els.nest.textContent = `Nest ${opts.nested}/${opts.totalEggs}`;
-  els.best.textContent = `Best ${opts.best}★`;
-  els.best.title = "Best score stars for this level";
+  els.best.textContent = `Best ${starString(opts.best)}`;
   els.muteBtn.innerHTML = opts.muted ? icons.mute : icons.unmute;
   els.motionBtn.classList.toggle("is-active", !opts.reduceMotion);
 }

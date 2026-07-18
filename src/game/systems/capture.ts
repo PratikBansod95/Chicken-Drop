@@ -5,10 +5,7 @@ import type { EggRuntime } from "../types";
 
 const { Body, Composite, Constraint, Query } = Matter;
 
-/**
- * Nest settle/pin — egg must be in the bowl sensor AND
- * (touching basket-floor OR resting on an already-nested egg).
- */
+/** Nest settle/pin capture — wide bowl sensor + low rest threshold. */
 export function updateNestCapture(
   engine: Matter.Engine,
   eggs: EggRuntime[],
@@ -20,37 +17,47 @@ export function updateNestCapture(
 ) {
   if (!nestSensor || !nestFloor) return;
 
+  const sensorBounds = nestSensor.bounds;
+  const floorY = nestFloor.position.y;
+
   for (const egg of eggs) {
     if (egg.broken || egg.nested) continue;
     const body = getBody(egg.bodyId);
     if (!body) continue;
 
     const inSensor = Query.collides(body, [nestSensor]).length > 0;
-    if (!inSensor) {
-      egg.nestHold = Math.max(0, egg.nestHold - 2);
-      continue;
-    }
-
     const onFloor = Query.collides(body, [nestFloor]).length > 0;
-    let onNestedEgg = false;
-    if (!onFloor) {
+
+    // Also treat “inside bowl AABB + above floor” as in-nest (helps stacked eggs)
+    const inBowlBox =
+      body.position.x > sensorBounds.min.x + 4 &&
+      body.position.x < sensorBounds.max.x - 4 &&
+      body.position.y > sensorBounds.min.y - 8 &&
+      body.position.y < floorY + EGG_RADIUS + 6;
+
+    // Supported by floor OR sitting on another already-nested / nearly-still egg
+    let onSupport = onFloor || body.position.y >= floorY - EGG_RADIUS - 14;
+    if (!onSupport) {
       for (const other of eggs) {
-        if (other.id === egg.id || other.broken || !other.nested) continue;
+        if (other.id === egg.id || other.broken) continue;
         const ob = getBody(other.bodyId);
         if (!ob) continue;
         const dist = Math.hypot(body.position.x - ob.position.x, body.position.y - ob.position.y);
-        if (dist < EGG_RADIUS * 2.2 && body.position.y >= ob.position.y - 6) {
-          onNestedEgg = true;
-          break;
+        if (dist < EGG_RADIUS * 2.15 && body.position.y > ob.position.y - 4) {
+          if (other.nested || Math.hypot(ob.velocity.x, ob.velocity.y) < TWEAKS.nestSettleSpeed) {
+            onSupport = true;
+            break;
+          }
         }
       }
     }
 
     const speed = Math.hypot(body.velocity.x, body.velocity.y);
     const settled =
-      (onFloor || onNestedEgg) &&
+      (inSensor || inBowlBox) &&
+      onSupport &&
       speed < TWEAKS.nestSettleSpeed &&
-      body.velocity.y > -1.0;
+      body.velocity.y > -1.2;
 
     if (settled) egg.nestHold += 1;
     else egg.nestHold = Math.max(0, egg.nestHold - 1);
@@ -59,7 +66,8 @@ export function updateNestCapture(
       egg.nested = true;
       Body.setVelocity(body, { x: 0, y: 0 });
       Body.setAngularVelocity(body, 0);
-      const settleY = Math.min(body.position.y, nestFloor.position.y - EGG_RADIUS * 0.85);
+      // Settle slightly into the bowl so the stack stays neat
+      const settleY = Math.min(body.position.y, floorY - EGG_RADIUS * 0.85);
       Body.setPosition(body, { x: body.position.x, y: settleY });
       const pin = Constraint.create({
         bodyA: body,

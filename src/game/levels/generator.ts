@@ -127,13 +127,12 @@ export function generateLevel(n: number): LevelData {
   }
   if (level >= 24) {
     const left = start.x < WORLD.width * 0.5;
-    // angle 0 blows +x; angle 180 blows -x (toward center from either wall)
     fixed.push(
       makeObj("fan", left ? 90 : 910, 620, {
         angle: left ? 0 : 180,
         w: 82,
         h: 90,
-        dir: 1,
+        dir: left ? 1 : -1,
       }),
     );
   }
@@ -171,9 +170,7 @@ export function generateLevel(n: number): LevelData {
   }
 
   const tools = toolBudget(level);
-  const toolTotal = Object.values(tools).reduce((a, b) => a + (b ?? 0), 0);
-  // Real budget: half of available tools (at least 0) — rewards efficient builds
-  const parTools = Math.max(0, Math.ceil(toolTotal * 0.5));
+  const parTools = Object.values(tools).reduce((a, b) => a + (b ?? 0), 0);
 
   return {
     number: level,

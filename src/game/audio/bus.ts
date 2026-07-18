@@ -11,28 +11,13 @@ type Sfx =
   | "fail"
   | "cluck";
 
-const FILE_MAP: Record<Sfx, string> = {
-  tap: "/assets/audio/ui_tap.wav",
-  lay: "/assets/audio/lay.wav",
-  plop: "/assets/audio/plop.wav",
-  bounce: "/assets/audio/bounce.wav",
-  crack: "/assets/audio/crack.wav",
-  star: "/assets/audio/star.wav",
-  win: "/assets/audio/win.wav",
-  fail: "/assets/audio/fail.wav",
-  cluck: "/assets/audio/cluck.wav",
-};
-
-/** Web Audio SFX with optional WAV files; procedural fallback always available. */
+/** Web Audio SFX + soft farm music loop (no external files required). */
 export class AudioBus {
   private ctx: AudioContext | null = null;
   private muted = false;
   private unlocked = false;
   private musicTimer: number | null = null;
   private musicOn = false;
-  private buffers = new Map<Sfx, AudioBuffer>();
-  private musicBuf: AudioBuffer | null = null;
-  private musicSrc: AudioBufferSourceNode | null = null;
 
   setMuted(muted: boolean) {
     this.muted = muted;
@@ -44,33 +29,6 @@ export class AudioBus {
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === "suspended") await this.ctx.resume();
     this.unlocked = true;
-    if (!this.buffers.size) void this.preloadFiles();
-  }
-
-  private async preloadFiles() {
-    if (!this.ctx) return;
-    await Promise.all(
-      (Object.keys(FILE_MAP) as Sfx[]).map(async (key) => {
-        try {
-          const res = await fetch(FILE_MAP[key]);
-          if (!res.ok) return;
-          const ab = await res.arrayBuffer();
-          const buf = await this.ctx!.decodeAudioData(ab.slice(0));
-          this.buffers.set(key, buf);
-        } catch {
-          /* procedural fallback */
-        }
-      }),
-    );
-    try {
-      const res = await fetch("/assets/audio/music_loop.wav");
-      if (res.ok) {
-        const ab = await res.arrayBuffer();
-        this.musicBuf = await this.ctx.decodeAudioData(ab.slice(0));
-      }
-    } catch {
-      /* ignore */
-    }
   }
 
   async enableMusic() {
@@ -81,16 +39,6 @@ export class AudioBus {
 
   play(kind: Sfx) {
     if (this.muted || !this.unlocked || !this.ctx) return;
-    const file = this.buffers.get(kind);
-    if (file) {
-      const src = this.ctx.createBufferSource();
-      const g = this.ctx.createGain();
-      g.gain.value = 0.7;
-      src.buffer = file;
-      src.connect(g).connect(this.ctx.destination);
-      src.start();
-      return;
-    }
     const t = this.ctx.currentTime;
     switch (kind) {
       case "tap":
@@ -132,24 +80,10 @@ export class AudioBus {
   }
 
   private startMusic() {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.musicTimer != null || this.muted) return;
     const prefs = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefs) return;
 
-    if (this.musicBuf) {
-      this.stopMusic();
-      const src = this.ctx.createBufferSource();
-      const g = this.ctx.createGain();
-      g.gain.value = TWEAKS.musicVolume;
-      src.buffer = this.musicBuf;
-      src.loop = true;
-      src.connect(g).connect(this.ctx.destination);
-      src.start();
-      this.musicSrc = src;
-      return;
-    }
-
-    if (this.musicTimer != null) return;
     const tick = () => {
       if (!this.ctx || this.muted || !this.musicOn) return;
       const t = this.ctx.currentTime;
@@ -166,14 +100,6 @@ export class AudioBus {
     if (this.musicTimer != null) {
       clearTimeout(this.musicTimer);
       this.musicTimer = null;
-    }
-    if (this.musicSrc) {
-      try {
-        this.musicSrc.stop();
-      } catch {
-        /* already stopped */
-      }
-      this.musicSrc = null;
     }
   }
 

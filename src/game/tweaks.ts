@@ -4,15 +4,14 @@ import type { SaveData } from "./types";
 export const TWEAKS = {
   gravity: 1.05,
   breakImpulse: 0.085,
-  nestSettleSpeed: 2.2,
-  nestHoldFrames: 10,
+  nestSettleSpeed: 2.8,
+  nestHoldFrames: 8,
   bounceScale: 1,
   fanForce: 0.0042,
-  eggLaySpacingMs: 480,
+  eggLaySpacingMs: 420,
   inkBudgetScale: 1,
   musicVolume: 0.12,
   shakeDecay: 0.86,
-  failDelaySec: 0.55,
 };
 
 export type TweakKey = keyof typeof TWEAKS;
@@ -24,7 +23,6 @@ export function defaultSave(): SaveData {
     bestStars: Array.from({ length: 50 }, () => 0),
     muted: false,
     reduceMotion: false,
-    seenTutorial: false,
   };
 }
 
@@ -46,7 +44,6 @@ export function loadSave(): SaveData {
       unlockedLevel: Math.max(1, Math.min(50, Math.floor(parsed.unlockedLevel || 1))),
       muted: !!parsed.muted,
       reduceMotion: !!parsed.reduceMotion,
-      seenTutorial: !!parsed.seenTutorial,
     };
   } catch {
     return defaultSave();
@@ -54,9 +51,5 @@ export function loadSave(): SaveData {
 }
 
 export function writeSave(data: SaveData): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(data));
-  } catch {
-    /* private mode / quota */
-  }
+  localStorage.setItem(KEY, JSON.stringify(data));
 }

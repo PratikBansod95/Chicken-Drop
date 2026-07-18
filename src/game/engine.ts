@@ -28,10 +28,9 @@ export class PhysicsWorld {
   private conveyors: { body: Matter.Body; dir: number; angle: number }[] = [];
   private rotating: { body: Matter.Body; speed: number }[] = [];
   private pins = new Map<string, Matter.Constraint>();
-  private bodyById = new Map<number, Matter.Body>();
 
   onEggNested: ((eggId: string) => void) | null = null;
-  onEggBroken: ((eggId: string, reason: FailReason, at: Vec2) => void) | null = null;
+  onEggBroken: ((eggId: string, reason: FailReason) => void) | null = null;
   onBounce: ((strength: number) => void) | null = null;
 
   constructor() {
@@ -51,7 +50,6 @@ export class PhysicsWorld {
     this.conveyors = [];
     this.rotating = [];
     this.pins.clear();
-    this.bodyById.clear();
 
     this.addBounds();
     this.addBasket(level.basket);
@@ -61,14 +59,9 @@ export class PhysicsWorld {
     this.wireCollisions();
   }
 
-  private track(body: Matter.Body) {
-    this.bodyById.set(body.id, body);
-    return body;
-  }
-
   private addBounds() {
     const t = 80;
-    const walls = [
+    Composite.add(this.engine.world, [
       Bodies.rectangle(WORLD.width / 2, -t / 2, WORLD.width + 400, t, {
         isStatic: true,
         label: "wall",
@@ -85,56 +78,46 @@ export class PhysicsWorld {
         isStatic: true,
         label: "wall",
       }),
-    ];
-    walls.forEach((b) => this.track(b));
-    Composite.add(this.engine.world, walls);
+    ]);
   }
 
   private addBasket(pos: Vec2) {
     // Wide shallow bowl — room for ~5 eggs side-by-side
     const thick = 12;
     const w = 300;
-    const wallH = 38;
+    const wallH = 42;
     const floorY = pos.y + 22;
-    const rimY = pos.y + 4;
+    const rimY = pos.y + 2;
 
-    const left = this.track(
-      Bodies.rectangle(pos.x - w / 2 + thick / 2, rimY, thick, wallH, {
-        isStatic: true,
-        friction: 0.85,
-        restitution: 0.08,
-        label: "basket-rim",
-        chamfer: { radius: 5 },
-        angle: -0.1,
-      }),
-    );
-    const right = this.track(
-      Bodies.rectangle(pos.x + w / 2 - thick / 2, rimY, thick, wallH, {
-        isStatic: true,
-        friction: 0.85,
-        restitution: 0.08,
-        label: "basket-rim",
-        chamfer: { radius: 5 },
-        angle: 0.1,
-      }),
-    );
-    const floor = this.track(
-      Bodies.rectangle(pos.x, floorY, w - thick * 1.1, thick, {
-        isStatic: true,
-        friction: 0.98,
-        restitution: 0.02,
-        label: "basket-floor",
-        chamfer: { radius: 4 },
-      }),
-    );
-    // Compact sensor — only the bowl interior (avoids false mid-air pins)
-    const sensor = this.track(
-      Bodies.rectangle(pos.x, pos.y + 14, w - 40, 48, {
-        isStatic: true,
-        isSensor: true,
-        label: "nest-sensor",
-      }),
-    );
+    const left = Bodies.rectangle(pos.x - w / 2 + thick / 2, rimY, thick, wallH, {
+      isStatic: true,
+      friction: 0.85,
+      restitution: 0.08,
+      label: "basket-rim",
+      chamfer: { radius: 5 },
+      angle: -0.12,
+    });
+    const right = Bodies.rectangle(pos.x + w / 2 - thick / 2, rimY, thick, wallH, {
+      isStatic: true,
+      friction: 0.85,
+      restitution: 0.08,
+      label: "basket-rim",
+      chamfer: { radius: 5 },
+      angle: 0.12,
+    });
+    const floor = Bodies.rectangle(pos.x, floorY, w - thick * 1.1, thick, {
+      isStatic: true,
+      friction: 0.98,
+      restitution: 0.02,
+      label: "basket-floor",
+      chamfer: { radius: 4 },
+    });
+    // Large interior sensor so stacked / side-by-side eggs all register
+    const sensor = Bodies.rectangle(pos.x, pos.y + 6, w - 28, 70, {
+      isStatic: true,
+      isSensor: true,
+      label: "nest-sensor",
+    });
     this.nestSensor = sensor;
     this.nestFloor = floor;
     Composite.add(this.engine.world, [left, right, floor, sensor]);
@@ -186,8 +169,7 @@ export class PhysicsWorld {
           ...common,
           isSensor: true,
         });
-        // Use radians on the body (obj.angle is already radians)
-        this.fanBodies.push({ body, angle: body.angle, dir: obj.dir ?? 1 });
+        this.fanBodies.push({ body, angle: obj.angle, dir: obj.dir ?? 1 });
         break;
       case "spike":
         body = Bodies.rectangle(obj.x, obj.y, obj.w, obj.h * 0.5, {
@@ -214,70 +196,45 @@ export class PhysicsWorld {
         body = Bodies.rectangle(obj.x, obj.y, obj.w, obj.h, common);
     }
 
-    this.track(body);
     Composite.add(this.engine.world, body);
     if ("bodyIds" in obj) obj.bodyIds = [body.id];
   }
 
   buildInk(strokes: InkStroke[]) {
-    for (const b of this.inkBodies) {
-      Composite.remove(this.engine.world, b);
-      this.bodyById.delete(b.id);
-    }
+    for (const b of this.inkBodies) Composite.remove(this.engine.world, b);
     this.inkBodies = [];
-    const thickness = 12;
     for (const stroke of strokes) {
       if (stroke.points.length < 2) continue;
-      // Merge short collinear runs into longer capsules
-      let runStart = stroke.points[0];
-      let prev = stroke.points[0];
-      let runAngle: number | null = null;
-      const flush = (end: Vec2) => {
-        const dx = end.x - runStart.x;
-        const dy = end.y - runStart.y;
+      for (let i = 1; i < stroke.points.length; i++) {
+        const a = stroke.points[i - 1];
+        const b = stroke.points[i];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
         const len = Math.hypot(dx, dy);
-        if (len < 3) return;
-        const seg = this.track(
-          Bodies.rectangle((runStart.x + end.x) / 2, (runStart.y + end.y) / 2, len, thickness, {
-            isStatic: true,
-            angle: Math.atan2(dy, dx),
-            friction: 0.55,
-            restitution: 0.16,
-            chamfer: { radius: 4 },
-            label: "ink",
-          }),
-        );
+        if (len < 2) continue;
+        const seg = Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len, 10, {
+          isStatic: true,
+          angle: Math.atan2(dy, dx),
+          friction: 0.55,
+          restitution: 0.18,
+          chamfer: { radius: 3 },
+          label: "ink",
+        });
         this.inkBodies.push(seg);
         Composite.add(this.engine.world, seg);
-      };
-      for (let i = 1; i < stroke.points.length; i++) {
-        const cur = stroke.points[i];
-        const ang = Math.atan2(cur.y - prev.y, cur.x - prev.x);
-        if (runAngle == null) runAngle = ang;
-        const turn = Math.abs(Math.atan2(Math.sin(ang - runAngle), Math.cos(ang - runAngle)));
-        const runLen = Math.hypot(cur.x - runStart.x, cur.y - runStart.y);
-        if (turn > 0.28 || runLen > 90) {
-          flush(prev);
-          runStart = prev;
-          runAngle = ang;
-        }
-        prev = cur;
       }
-      flush(prev);
     }
   }
 
   spawnEgg(at: Vec2, id: string): EggRuntime {
-    const body = this.track(
-      Bodies.circle(at.x, at.y, EGG_RADIUS, {
-        label: `egg:${id}`,
-        restitution: 0.28,
-        friction: 0.35,
-        frictionAir: 0.012,
-        density: 0.0022,
-        sleepThreshold: 45,
-      }),
-    );
+    const body = Bodies.circle(at.x, at.y, EGG_RADIUS, {
+      label: `egg:${id}`,
+      restitution: 0.28,
+      friction: 0.35,
+      frictionAir: 0.012,
+      density: 0.0022,
+      sleepThreshold: 45,
+    });
     Composite.add(this.engine.world, body);
     const egg: EggRuntime = {
       id,
@@ -347,12 +304,8 @@ export class PhysicsWorld {
     if (egg.broken || egg.nested) return;
     egg.broken = true;
     const body = this.getBody(egg.bodyId);
-    const at = body ? { x: body.position.x, y: body.position.y } : { x: 0, y: 0 };
-    if (body) {
-      Composite.remove(this.engine.world, body);
-      this.bodyById.delete(body.id);
-    }
-    this.onEggBroken?.(egg.id, reason, at);
+    if (body) Composite.remove(this.engine.world, body);
+    this.onEggBroken?.(egg.id, reason);
   }
 
   step(dtMs: number) {
@@ -373,11 +326,10 @@ export class PhysicsWorld {
         const localX = dx * Math.cos(-fan.angle) - dy * Math.sin(-fan.angle);
         const localY = dx * Math.sin(-fan.angle) + dy * Math.cos(-fan.angle);
         if (localX < 0 || localX > 240 || Math.abs(localY) > 100) continue;
-        // dir scales magnitude; blow direction is fan.angle (0 = +x, π = -x)
-        const mag = TWEAKS.fanForce * (1 - localX / 280) * Math.abs(fan.dir || 1);
+        const force = TWEAKS.fanForce * (1 - localX / 280) * fan.dir;
         Body.applyForce(body, body.position, {
-          x: Math.cos(fan.angle) * mag,
-          y: Math.sin(fan.angle) * mag,
+          x: Math.cos(fan.angle) * force,
+          y: Math.sin(fan.angle) * force,
         });
       }
     }
@@ -427,7 +379,10 @@ export class PhysicsWorld {
   }
 
   private getBody(id: number): Matter.Body | null {
-    return this.bodyById.get(id) ?? null;
+    for (const b of Composite.allBodies(this.engine.world)) {
+      if (b.id === id) return b;
+    }
+    return null;
   }
 
   getEggBody(egg: EggRuntime): Matter.Body | null {

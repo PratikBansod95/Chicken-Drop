@@ -1,6 +1,6 @@
 import { AudioBus } from "./audio";
 import { assets } from "./assets/bank";
-import { getLevel } from "./levels";
+import { generateLevel } from "./levels";
 import { PhysicsWorld, type InkStroke, type PlacedTool } from "./physics";
 import { renderFrame, resizeCanvas, worldFromClient } from "./render";
 import { loadSave, writeSave } from "./save";
@@ -17,20 +17,11 @@ import type {
 } from "./types";
 import { CameraFx } from "./systems/cameraFx";
 import { appendDraftPoint, commitStroke, strokeLength } from "./systems/inkDraw";
-import {
-  createPlacedTool,
-  hitTestTool,
-  type UndoAction,
-} from "./systems/selection";
 import { failMessage, scoreStars } from "./systems/winLose";
-import { isEditing, isSimulating, isTerminal } from "./scene/modes";
 import { updateHud } from "./ui/hud";
 import { refreshTray } from "./ui/tray";
 import { shellHtml, showResult } from "./ui/shell";
 import { bindActions } from "./ui/actions";
-import { renderLevelMap } from "./ui/levelMap";
-
-type TutorialStep = "draw" | "play" | "nest" | "done";
 
 export class Game {
   private root: HTMLElement;
@@ -48,10 +39,6 @@ export class Game {
   private remainingTools: Partial<Record<ToolKind, number>> = {};
   private selectedTool: SelectedTool = "draw";
   private selectedPlacedId: string | null = null;
-  private undoStack: UndoAction[] = [];
-  private draggingToolId: string | null = null;
-  private dragOffset: Vec2 = { x: 0, y: 0 };
-  private dragFrom: Vec2 | null = null;
   private view = { w: 0, h: 0, scale: 1 };
   private clock = 0;
   private elapsed = 0;
@@ -63,11 +50,7 @@ export class Game {
   private collectedStars = new Set<number>();
   private crackedPositions: Vec2[] = [];
   private failMessageText = "";
-  private failAt = 0;
-  private pendingFail = false;
   private toastUntil = 0;
-  private nestGlowUntil = 0;
-  private tutorialStep: TutorialStep = "done";
   private raf = 0;
   private lastTs = 0;
   private drawing = false;
@@ -80,21 +63,14 @@ export class Game {
     nest: HTMLElement;
     best: HTMLElement;
     toast: HTMLElement;
-    coach: HTMLElement;
     tray: HTMLElement;
     startCopy: HTMLElement;
     resultTitle: HTMLElement;
     resultStars: HTMLElement;
     resultCopy: HTMLElement;
-    resultBreakdown: HTMLElement;
-    resultNextBtn: HTMLElement;
     startOverlay: HTMLElement;
     resultOverlay: HTMLElement;
-    mapOverlay: HTMLElement;
-    mapGrid: HTMLElement;
     preload: HTMLElement;
-    preloadFill: HTMLElement;
-    preloadPct: HTMLElement;
     muteBtn: HTMLElement;
     motionBtn: HTMLElement;
   };
@@ -120,21 +96,14 @@ export class Game {
       nest: this.root.querySelector('[data-field="nest"]')!,
       best: this.root.querySelector('[data-field="best"]')!,
       toast: this.root.querySelector('[data-field="toast"]')!,
-      coach: this.root.querySelector('[data-field="coach"]')!,
       tray: this.root.querySelector('[data-field="tray"]')!,
       startCopy: this.root.querySelector('[data-field="startCopy"]')!,
       resultTitle: this.root.querySelector('[data-field="resultTitle"]')!,
       resultStars: this.root.querySelector('[data-field="resultStars"]')!,
       resultCopy: this.root.querySelector('[data-field="resultCopy"]')!,
-      resultBreakdown: this.root.querySelector('[data-field="resultBreakdown"]')!,
-      resultNextBtn: this.root.querySelector('[data-action="resultNext"]')!,
       startOverlay: this.root.querySelector('[data-overlay="start"]')!,
       resultOverlay: this.root.querySelector('[data-overlay="result"]')!,
-      mapOverlay: this.root.querySelector('[data-overlay="map"]')!,
-      mapGrid: this.root.querySelector('[data-field="mapGrid"]')!,
       preload: this.root.querySelector('[data-overlay="preload"]')!,
-      preloadFill: this.root.querySelector('[data-field="preloadFill"]')!,
-      preloadPct: this.root.querySelector('[data-field="preloadPct"]')!,
       muteBtn: this.root.querySelector('[data-action="mute"]')!,
       motionBtn: this.root.querySelector('[data-action="motion"]')!,
     };
@@ -151,24 +120,19 @@ export class Game {
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
 
     this.physics.onEggNested = (id) => this.handleNested(id);
-    this.physics.onEggBroken = (id, reason, at) => this.handleBroken(id, reason, at);
+    this.physics.onEggBroken = (id, reason) => this.handleBroken(id, reason);
     this.physics.onBounce = (s) => {
       this.audio.play("bounce");
       this.fx.impulse(Math.min(8, s * 0.35));
     };
 
-    void assets
-      .load((pct) => {
-        this.els.preloadFill.style.width = `${Math.round(pct * 100)}%`;
-        this.els.preloadPct.textContent = `Loading ${Math.round(pct * 100)}%`;
-      })
-      .then(() => {
-        this.els.preload.hidden = true;
-        this.els.startOverlay.hidden = false;
-        this.canvas.hidden = false;
-        this.refreshTray();
-        this.updateHud();
-      });
+    void assets.load().then(() => {
+      this.els.preload.hidden = true;
+      this.els.startOverlay.hidden = false;
+      this.canvas.hidden = false;
+      this.refreshTray();
+      this.updateHud();
+    });
 
     this.lastTs = performance.now();
     this.raf = requestAnimationFrame(this.tick);
@@ -201,18 +165,6 @@ export class Game {
         delete: () => this.deleteSelected(),
         resultNext: () => this.nextLevel(),
         resultRetry: () => this.resetLevel(),
-        resultMap: () => this.openMap(),
-        map: () => this.openMap(),
-        openMap: () => this.openMap(),
-        mapContinue: () => {
-          this.closeMap();
-          this.loadLevel(this.save.unlockedLevel);
-          this.els.startOverlay.hidden = true;
-          this.root.classList.remove("egg-intro-open");
-          this.mode = "ready";
-          this.maybeStartTutorial();
-        },
-        mapClose: () => this.closeMap(),
         mute: () => {
           this.save.muted = !this.save.muted;
           this.audio.setMuted(this.save.muted);
@@ -241,91 +193,19 @@ export class Game {
         ? "Guide the egg to the nest"
         : `Get all ${this.level.eggCount} eggs in the nest`,
     );
-    this.maybeStartTutorial();
     this.refreshTray();
     this.updateHud();
   }
 
-  private maybeStartTutorial() {
-    if (this.level.number === 1 && !this.save.seenTutorial) {
-      this.tutorialStep = "draw";
-      this.updateCoach();
-    } else {
-      this.tutorialStep = "done";
-      this.els.coach.hidden = true;
-    }
-  }
-
-  private advanceTutorial(from: TutorialStep) {
-    if (this.tutorialStep !== from) return;
-    if (from === "draw") this.tutorialStep = "play";
-    else if (from === "play") this.tutorialStep = "nest";
-    else if (from === "nest") {
-      this.tutorialStep = "done";
-      this.save.seenTutorial = true;
-      writeSave(this.save);
-      this.nestGlowUntil = this.clock + 2.2;
-    }
-    this.updateCoach();
-  }
-
-  private updateCoach() {
-    if (this.save.reduceMotion && this.tutorialStep !== "done") {
-      /* still show text */
-    }
-    const messages: Record<TutorialStep, string> = {
-      draw: "Draw a path from the hen toward the nest",
-      play: "Tap Play to lay the egg",
-      nest: "Watch it settle in the nest",
-      done: "",
-    };
-    const msg = messages[this.tutorialStep];
-    if (!msg) {
-      this.els.coach.hidden = true;
-      return;
-    }
-    this.els.coach.hidden = false;
-    this.els.coach.textContent = msg;
-    this.els.coach.classList.toggle("is-pulse", !this.save.reduceMotion);
-  }
-
-  private openMap() {
-    this.els.resultOverlay.hidden = true;
-    renderLevelMap(this.els.mapGrid, {
-      unlockedLevel: this.save.unlockedLevel,
-      bestStars: this.save.bestStars,
-      current: this.level.number,
-      onPick: (n) => {
-        this.closeMap();
-        this.loadLevel(n);
-        this.els.startOverlay.hidden = true;
-        this.root.classList.remove("egg-intro-open");
-        this.mode = "ready";
-        this.canvas.hidden = false;
-        this.maybeStartTutorial();
-        this.showToast(`Level ${n}`);
-      },
-    });
-    this.els.mapOverlay.hidden = false;
-    this.mode = "map";
-  }
-
-  private closeMap() {
-    this.els.mapOverlay.hidden = true;
-    if (this.mode === "map") this.mode = "ready";
-  }
-
   private loadLevel(n: number) {
-    this.level = getLevel(n);
+    this.level = generateLevel(n);
     this.strokes = [];
     this.draft = null;
     this.inkUsed = 0;
     this.placed = [];
-    this.undoStack = [];
     this.remainingTools = { ...this.level.tools };
     this.selectedTool = "draw";
     this.selectedPlacedId = null;
-    this.draggingToolId = null;
     this.elapsed = 0;
     this.nestedCount = 0;
     this.eggsLaid = 0;
@@ -333,7 +213,6 @@ export class Game {
     this.collectedStars.clear();
     this.crackedPositions = [];
     this.failMessageText = "";
-    this.pendingFail = false;
     this.chickenPhase = "idle";
     this.mode = this.els.startOverlay.hidden ? "ready" : "intro";
     this.physics.resetLevel(this.level, [], []);
@@ -349,19 +228,13 @@ export class Game {
   private resetLevel() {
     this.loadLevel(this.level.number);
     this.els.startOverlay.hidden = true;
-    this.els.mapOverlay.hidden = true;
     this.root.classList.remove("egg-intro-open");
     this.mode = "ready";
     this.canvas.hidden = false;
-    this.maybeStartTutorial();
     this.refreshTray();
   }
 
   private nextLevel() {
-    if (this.level.number >= 50) {
-      this.openMap();
-      return;
-    }
     const next = Math.min(50, this.level.number + 1);
     this.save.unlockedLevel = Math.max(this.save.unlockedLevel, next);
     writeSave(this.save);
@@ -384,14 +257,12 @@ export class Game {
       this.showToast("Draw a path or place a tool first");
       return;
     }
-    this.advanceTutorial("play");
     this.physics.resetLevel(this.level, this.strokes, this.placed);
     this.nestedCount = 0;
     this.eggsLaid = 0;
     this.eggsToLay = this.level.eggCount;
     this.elapsed = 0;
     this.crackedPositions = [];
-    this.pendingFail = false;
     this.collectedStars.clear();
     this.level.stars.forEach((s) => (s.collected = false));
     this.mode = "laying";
@@ -425,31 +296,25 @@ export class Game {
     this.nestedCount += 1;
     this.audio.play("plop");
     this.fx.impulse(3);
-    this.nestGlowUntil = this.clock + 0.8;
     this.showToast(`Nested ${this.nestedCount}/${this.eggsToLay}`);
     this.updateHud();
-    if (this.tutorialStep === "nest") this.advanceTutorial("nest");
     if (this.nestedCount >= this.eggsToLay && this.eggsLaid >= this.eggsToLay) this.win();
   }
 
-  private handleBroken(id: string, reason: FailReason, at: Vec2) {
-    if (isTerminal(this.mode) || this.pendingFail) return;
+  private handleBroken(id: string, reason: FailReason) {
     this.failMessageText = failMessage(reason, id.replace("egg-", "Egg "));
-    this.crackedPositions.push({ ...at });
     this.audio.play("crack");
     this.fx.impulse(10);
-    this.pendingFail = true;
-    this.failAt = this.clock + TWEAKS.failDelaySec;
+    this.fail();
   }
 
   private win() {
-    if (isTerminal(this.mode)) return;
+    if (this.mode === "won" || this.mode === "failed") return;
     this.mode = "won";
-    this.pendingFail = false;
     this.audio.play("win");
     this.fx.burst(this.level.basket.x, this.level.basket.y);
 
-    const breakdown = scoreStars({
+    const stars = scoreStars({
       inkUsed: this.inkUsed,
       parInk: this.level.parInk,
       placedCount: this.placed.length,
@@ -458,24 +323,20 @@ export class Game {
       timeLimit: this.level.timeLimit,
       starsCollected: this.collectedStars.size,
     });
+
     const idx = this.level.number - 1;
-    this.save.bestStars[idx] = Math.max(this.save.bestStars[idx] ?? 0, breakdown.total);
+    this.save.bestStars[idx] = Math.max(this.save.bestStars[idx] ?? 0, stars);
     this.save.unlockedLevel = Math.max(this.save.unlockedLevel, Math.min(50, this.level.number + 1));
     writeSave(this.save);
 
-    const farmComplete = this.level.number >= 50;
     showResult(this.els, {
       won: true,
-      stars: breakdown.total,
-      title: farmComplete ? "Farm complete!" : breakdown.total >= 3 ? "Perfect nest!" : "Eggs home!",
-      copy: farmComplete
-        ? "Every nest on the farm is full. Replay any level from the map."
-        : this.eggsToLay === 1
+      stars,
+      title: stars >= 3 ? "Perfect nest!" : "Eggs home!",
+      copy:
+        this.eggsToLay === 1
           ? "The egg settled safely in the nest."
           : `All ${this.eggsToLay} eggs settled in the nest.`,
-      breakdown,
-      showNext: !farmComplete,
-      farmComplete,
     });
     this.updateHud();
   }
@@ -483,104 +344,45 @@ export class Game {
   private fail() {
     if (this.mode === "won" || this.mode === "failed") return;
     this.mode = "failed";
-    this.pendingFail = false;
     this.audio.play("fail");
     showResult(this.els, {
       won: false,
       stars: 0,
       title: "Oh no!",
       copy: this.failMessageText || "Try a softer path.",
-      breakdown: null,
-      showNext: false,
     });
   }
 
-  private pushUndo(action: UndoAction) {
-    this.undoStack.push(action);
-    if (this.undoStack.length > 80) this.undoStack.shift();
-  }
-
   private undo() {
-    if (!isEditing(this.mode)) return;
-    const action = this.undoStack.pop();
-    if (!action) {
-      // legacy: pop last stroke if stack empty
-      if (this.strokes.length) {
-        const last = this.strokes.pop()!;
-        this.inkUsed = Math.max(0, this.inkUsed - strokeLength(last.points));
-      }
-      this.updateHud();
-      return;
-    }
-    switch (action.type) {
-      case "stroke":
-        if (this.strokes.length) {
-          this.strokes.pop();
-          this.inkUsed = Math.max(0, this.inkUsed - action.inkDelta);
-        }
-        break;
-      case "place": {
-        const idx = this.placed.findIndex((p) => p.id === action.toolId);
-        if (idx >= 0) {
-          this.placed.splice(idx, 1);
-          this.remainingTools[action.kind] = (this.remainingTools[action.kind] ?? 0) + 1;
-        }
-        if (this.selectedPlacedId === action.toolId) this.selectedPlacedId = null;
-        this.refreshTray();
-        break;
-      }
-      case "delete": {
-        this.placed.push(action.tool);
-        const kind = action.tool.type as ToolKind;
-        if (kind in TOOL_META) {
-          this.remainingTools[kind] = Math.max(0, (this.remainingTools[kind] ?? 0) - 1);
-        }
-        this.refreshTray();
-        break;
-      }
-      case "move": {
-        const t = this.placed.find((p) => p.id === action.toolId);
-        if (t) {
-          t.x = action.from.x;
-          t.y = action.from.y;
-        }
-        break;
-      }
-      case "rotate": {
-        const t = this.placed.find((p) => p.id === action.toolId);
-        if (t) t.angle = action.fromAngle;
-        break;
-      }
+    if (this.mode !== "ready") return;
+    if (this.strokes.length) {
+      const last = this.strokes.pop()!;
+      this.inkUsed = Math.max(0, this.inkUsed - strokeLength(last.points));
     }
     this.updateHud();
   }
 
   private clearInk() {
-    if (!isEditing(this.mode)) return;
-    if (!this.strokes.length) return;
+    if (this.mode !== "ready") return;
     this.strokes = [];
     this.inkUsed = 0;
-    this.undoStack = this.undoStack.filter((a) => a.type !== "stroke");
     this.updateHud();
   }
 
   private rotateSelected(dir: number) {
-    if (!isEditing(this.mode) || !this.selectedPlacedId) return;
+    if (this.mode !== "ready" || !this.selectedPlacedId) return;
     const obj = this.placed.find((p) => p.id === this.selectedPlacedId);
     if (!obj) return;
-    const fromAngle = obj.angle;
     obj.angle += (dir * Math.PI) / 12;
-    this.pushUndo({ type: "rotate", toolId: obj.id, fromAngle, toAngle: obj.angle });
   }
 
   private deleteSelected() {
-    if (!isEditing(this.mode) || !this.selectedPlacedId) return;
+    if (this.mode !== "ready" || !this.selectedPlacedId) return;
     const idx = this.placed.findIndex((p) => p.id === this.selectedPlacedId);
     if (idx < 0) return;
     const [obj] = this.placed.splice(idx, 1);
     const kind = obj.type as ToolKind;
     if (kind in TOOL_META) this.remainingTools[kind] = (this.remainingTools[kind] ?? 0) + 1;
-    this.pushUndo({ type: "delete", tool: { ...obj } });
     this.selectedPlacedId = null;
     this.refreshTray();
   }
@@ -593,7 +395,7 @@ export class Game {
 
   private refreshTray() {
     refreshTray(this.els.tray, {
-      mode: this.mode === "map" ? "ready" : this.mode,
+      mode: this.mode,
       selectedTool: this.selectedTool,
       levelTools: this.level.tools,
       remaining: this.remainingTools,
@@ -642,25 +444,12 @@ export class Game {
   };
 
   private onPointerDown = (e: PointerEvent) => {
-    if (!isEditing(this.mode)) return;
+    if (this.mode !== "ready") return;
     void this.audio.unlock();
     const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
     this.canvas.setPointerCapture(e.pointerId);
 
-    // Always allow selecting / moving placed tools
-    const hit = hitTestTool(this.placed, p);
-    if (hit) {
-      this.selectedPlacedId = hit.id;
-      this.selectedTool = "draw";
-      this.draggingToolId = hit.id;
-      this.dragOffset = { x: p.x - hit.x, y: p.y - hit.y };
-      this.dragFrom = { x: hit.x, y: hit.y };
-      this.refreshTray();
-      return;
-    }
-
     if (this.selectedTool === "draw") {
-      this.selectedPlacedId = null;
       this.drawing = true;
       this.draft = [p];
       return;
@@ -669,24 +458,25 @@ export class Game {
     const kind = this.selectedTool;
     const left = this.remainingTools[kind] ?? 0;
     if (left <= 0) return;
-    const obj = createPlacedTool(kind, p);
+    const meta = TOOL_META[kind];
+    const obj: PlacedTool = {
+      id: `${kind}-${Date.now()}`,
+      type: kind,
+      x: p.x,
+      y: p.y,
+      angle: 0,
+      w: meta.w,
+      h: meta.h,
+      dir: 1,
+      bodyIds: [],
+    };
     this.placed.push(obj);
     this.remainingTools[kind] = left - 1;
     this.selectedPlacedId = obj.id;
-    this.pushUndo({ type: "place", toolId: obj.id, kind });
     this.refreshTray();
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    if (this.draggingToolId && isEditing(this.mode)) {
-      const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
-      const t = this.placed.find((x) => x.id === this.draggingToolId);
-      if (t) {
-        t.x = p.x - this.dragOffset.x;
-        t.y = p.y - this.dragOffset.y;
-      }
-      return;
-    }
     if (!this.drawing || !this.draft) return;
     const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
     const result = appendDraftPoint(
@@ -699,35 +489,12 @@ export class Game {
   };
 
   private onPointerUp = () => {
-    if (this.draggingToolId) {
-      const t = this.placed.find((x) => x.id === this.draggingToolId);
-      if (t && this.dragFrom) {
-        const moved = Math.hypot(t.x - this.dragFrom.x, t.y - this.dragFrom.y) > 4;
-        if (moved) {
-          this.pushUndo({
-            type: "move",
-            toolId: t.id,
-            from: this.dragFrom,
-            to: { x: t.x, y: t.y },
-          });
-        }
-      }
-      this.draggingToolId = null;
-      this.dragFrom = null;
-      return;
-    }
     if (!this.drawing || !this.draft) {
       this.drawing = false;
       return;
     }
     this.drawing = false;
-    const before = this.inkUsed;
     this.inkUsed += commitStroke(this.strokes, this.draft);
-    const delta = this.inkUsed - before;
-    if (delta > 0) {
-      this.pushUndo({ type: "stroke", inkDelta: delta });
-      this.advanceTutorial("draw");
-    }
     this.draft = null;
     this.updateHud();
   };
@@ -756,10 +523,6 @@ export class Game {
 
     if (this.clock > this.toastUntil) this.els.toast.hidden = true;
 
-    if (this.pendingFail && this.clock >= this.failAt) {
-      this.fail();
-    }
-
     if (this.mode === "laying" && !this.paused) {
       this.layTimer -= dt;
       if (this.layTimer <= 0) {
@@ -772,7 +535,7 @@ export class Game {
       }
       this.physics.step(dt * 1000);
       this.collectStars();
-    } else if (this.mode === "running" && !this.paused && !this.pendingFail) {
+    } else if (this.mode === "running" && !this.paused) {
       this.elapsed += dt;
       if (this.elapsed > this.level.timeLimit) {
         this.failMessageText = failMessage("timeout");
@@ -789,8 +552,6 @@ export class Game {
         }
       }
       this.updateHud();
-    } else if (isSimulating(this.mode) && this.pendingFail && !this.paused) {
-      this.physics.step(dt * 1000);
     }
 
     renderFrame({
@@ -806,8 +567,6 @@ export class Game {
       crackedPositions: this.crackedPositions,
       fx: this.fx,
       reduceMotion: this.save.reduceMotion,
-      selectedPlacedId: this.selectedPlacedId,
-      nestGlow: this.clock < this.nestGlowUntil,
     });
 
     this.raf = requestAnimationFrame(this.tick);

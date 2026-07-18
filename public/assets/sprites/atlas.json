@@ -1,0 +1,22 @@
+{
+  "name": "chicken-nest-run-atlas",
+  "meta": {
+    "note": "Placeholder atlas metadata. Game currently draws farm art via canvas entities.",
+    "frames": {
+      "chicken_idle": { "x": 0, "y": 0, "w": 96, "h": 96 },
+      "chicken_lay": { "x": 96, "y": 0, "w": 96, "h": 96 },
+      "egg": { "x": 0, "y": 96, "w": 48, "h": 64 },
+      "egg_cracked": { "x": 48, "y": 96, "w": 48, "h": 64 },
+      "basket_empty": { "x": 192, "y": 0, "w": 128, "h": 96 },
+      "star": { "x": 320, "y": 0, "w": 48, "h": 48 },
+      "spring": { "x": 0, "y": 192, "w": 84, "h": 90 },
+      "bouncy_pad": { "x": 84, "y": 192, "w": 110, "h": 62 },
+      "fan": { "x": 194, "y": 192, "w": 84, "h": 92 },
+      "conveyor": { "x": 278, "y": 192, "w": 145, "h": 54 },
+      "sticky_zone": { "x": 0, "y": 284, "w": 135, "h": 62 },
+      "spike": { "x": 135, "y": 284, "w": 140, "h": 62 },
+      "fire": { "x": 275, "y": 284, "w": 118, "h": 86 },
+      "pan": { "x": 0, "y": 370, "w": 176, "h": 72 }
+    }
+  }
+}
