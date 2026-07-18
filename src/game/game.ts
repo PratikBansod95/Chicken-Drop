@@ -26,6 +26,8 @@ import { refreshTray } from "./ui/tray";
 import { shellHtml, showResult } from "./ui/shell";
 import { bindActions } from "./ui/actions";
 
+const INK_PROTECTED_PADDING = 14;
+
 export class Game {
   private root: HTMLElement;
   private canvas!: HTMLCanvasElement;
@@ -475,7 +477,7 @@ export class Game {
     if (e.code === "Delete" || e.code === "Backspace") this.deleteSelected();
   };
 
-  private isProtectedBuildPoint(point: Vec2): boolean {
+  private isProtectedBuildPoint(point: Vec2, ignorePlacedId?: string): boolean {
     const spawn = {
       x: this.level.start.x + EGG_SPEC.spawnOffset.x,
       y: this.level.start.y + EGG_SPEC.spawnOffset.y,
@@ -488,7 +490,42 @@ export class Game {
     }
     const nestX = (point.x - this.level.basket.x) / (NEST_SPEC.outerWidth / 2 + 16);
     const nestY = (point.y - this.level.basket.y) / (NEST_SPEC.wallHeight / 2 + 24);
-    return nestX * nestX + nestY * nestY < 1;
+    if (nestX * nestX + nestY * nestY < 1) return true;
+
+    const objects = [
+      ...this.level.fixedObjects,
+      ...this.placed.filter((placed) => placed.id !== ignorePlacedId),
+    ];
+    return objects.some((object) => {
+      const dx = point.x - object.x;
+      const dy = point.y - object.y;
+      const cos = Math.cos(-object.angle);
+      const sin = Math.sin(-object.angle);
+      const localX = dx * cos - dy * sin;
+      const localY = dx * sin + dy * cos;
+      const padding = INK_PROTECTED_PADDING;
+      return (
+        Math.abs(localX) <= object.w / 2 + padding &&
+        Math.abs(localY) <= object.h / 2 + padding
+      );
+    });
+  }
+
+  private segmentCrossesProtected(from: Vec2, to: Vec2): boolean {
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const samples = Math.max(1, Math.ceil(distance / 8));
+    for (let index = 1; index <= samples; index++) {
+      const t = index / samples;
+      if (
+        this.isProtectedBuildPoint({
+          x: from.x + (to.x - from.x) * t,
+          y: from.y + (to.y - from.y) * t,
+        })
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private onPointerDown = (e: PointerEvent) => {
@@ -546,12 +583,21 @@ export class Game {
     if (!p) return;
     if (this.draggingPlacedId) {
       const tool = this.placed.find((placed) => placed.id === this.draggingPlacedId);
-      if (!tool || this.isProtectedBuildPoint(p)) return;
+      if (!tool || this.isProtectedBuildPoint(p, tool.id)) return;
       tool.x = p.x - this.dragOffset.x;
       tool.y = p.y - this.dragOffset.y;
       return;
     }
-    if (!this.drawing || !this.draft || this.isProtectedBuildPoint(p)) return;
+    if (!this.drawing || !this.draft) return;
+    const previous = this.draft[this.draft.length - 1];
+    if (this.segmentCrossesProtected(previous, p)) {
+      this.inkUsed += commitStroke(this.strokes, this.draft);
+      this.draft = null;
+      this.drawing = false;
+      this.showToast("Ink cannot cross tools or hazards");
+      this.updateHud();
+      return;
+    }
     const result = appendDraftPoint(
       this.draft,
       p,
