@@ -64,6 +64,36 @@ describe("fixed-step redesign", () => {
     world.destroy();
   });
 
+  it("launches an egg from the visible top of a spring", () => {
+    const world = new PhysicsWorld();
+    world.resetLevel(
+      emptyLevel(),
+      [],
+      [
+        {
+          id: "spring-test",
+          type: "spring",
+          x: 500,
+          y: 500,
+          angle: 0,
+          w: 84,
+          h: 90,
+          dir: 1,
+          bodyIds: [],
+        },
+      ],
+    );
+    const egg = world.spawnEgg({ x: 500, y: 380 }, "egg-1");
+    let launched = false;
+    for (let frame = 0; frame < 120; frame++) {
+      world.step(SIMULATION.fixedStepMs);
+      const body = world.getEggBody(egg);
+      if (body && body.velocity.y < -8) launched = true;
+    }
+    expect(launched).toBe(true);
+    world.destroy();
+  });
+
   it("does not capture an unsupported egg in mid-air", () => {
     const world = new PhysicsWorld();
     world.resetLevel(emptyLevel(), [], []);

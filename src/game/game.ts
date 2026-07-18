@@ -437,6 +437,9 @@ export class Game {
         this.selectedTool = tool;
         this.selectedPlacedId = null;
         this.audio.play("tap");
+        if (tool === "spring") {
+          this.showToast("Spring: place the green top plate under an egg; rotate with Q / E");
+        }
         this.refreshTray();
       },
     });
@@ -575,6 +578,9 @@ export class Game {
     this.placed.push(obj);
     this.remainingTools[kind] = left - 1;
     this.selectedPlacedId = obj.id;
+    if (kind === "spring") {
+      this.showToast("Spring armed — its top plate launches eggs in the direction it faces");
+    }
     this.refreshTray();
   };
 

@@ -110,11 +110,22 @@ export class PhysicsWorld {
     let body: Matter.Body;
     switch (obj.type) {
       case "spring":
-        body = Bodies.rectangle(obj.x, obj.y, obj.w * 0.7, obj.h * 0.55, {
-          ...common,
-          restitution: 1.15 * TWEAKS.bounceScale,
-          friction: 0.1,
-        });
+        {
+          // The physical launch plate sits at the visible top of the tall spring.
+          const plateOffset = obj.h * 0.3;
+          body = Bodies.rectangle(
+            obj.x + Math.sin(obj.angle) * plateOffset,
+            obj.y - Math.cos(obj.angle) * plateOffset,
+            obj.w * 0.82,
+            obj.h * 0.2,
+            {
+              ...common,
+              restitution: 0.92 * TWEAKS.bounceScale,
+              friction: 0.08,
+              chamfer: { radius: 5 },
+            },
+          );
+        }
         break;
       case "pad":
         body = Bodies.rectangle(obj.x, obj.y, obj.w, obj.h * 0.55, {
@@ -311,6 +322,32 @@ export class PhysicsWorld {
     if (isStart && (kind === "ink" || kind === "basket-rim" || kind === "spring" || kind === "pad")) {
       const impact = Math.hypot(eggBody.velocity.x, eggBody.velocity.y);
       if (impact > 4.5) this.onBounce?.(impact);
+      if (kind === "spring") {
+        // Launch along the spring's local up axis while retaining ramp momentum.
+        const normal = {
+          x: Math.sin(other.angle),
+          y: -Math.cos(other.angle),
+        };
+        const tangent = {
+          x: Math.cos(other.angle),
+          y: Math.sin(other.angle),
+        };
+        const tangentialSpeed =
+          eggBody.velocity.x * tangent.x + eggBody.velocity.y * tangent.y;
+        const launchSpeed = 13.5 * TWEAKS.bounceScale;
+        Matter.Sleeping.set(eggBody, false);
+        Body.setVelocity(eggBody, {
+          x: tangent.x * tangentialSpeed * 0.92 + normal.x * launchSpeed,
+          y: tangent.y * tangentialSpeed * 0.92 + normal.y * launchSpeed,
+        });
+        Body.setAngularVelocity(
+          eggBody,
+          Math.max(
+            -EGG_SPEC.maxAngularSpeed,
+            Math.min(EGG_SPEC.maxAngularSpeed, tangentialSpeed / EGG_SPEC.radius),
+          ),
+        );
+      }
       if (kind === "ink" || kind === "basket-rim") {
         const rel = Math.hypot(
           eggBody.velocity.x - other.velocity.x,
