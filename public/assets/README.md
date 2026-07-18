@@ -1,10 +1,21 @@
-# Farm assets
+# Assets
 
-Sprites and SFX are primarily rendered / generated at runtime (canvas art + Web Audio)
-so the game deploys without binary art dependencies.
+Farm storybook sprites and short WAV SFX for Chicken Nest Run.
 
-Optional replacements:
-- `sprites/atlas.webp` + `atlas.json` — drop in TexturePacker output and wire in render
-- `audio/*.ogg` — replace procedural SFX/music in `src/game/audio/bus.ts`
+## Sprites (`sprites/`)
 
-Do not remove this folder; Vercel ships `public/` as static files.
+- `nest_bowl.png`, `egg.png`, `egg_cracked.png`
+- `chicken_idle.png`, `chicken_lay.png`, `star.png`
+- Tools: `spring.png`, `pad.png`, `fan.png`, `belt.png`, `sticky.png`
+- Hazards: `spike.png`, `fire.png`, `pan.png`
+- `backdrop.jpg` — playfield atmosphere
+- Legacy fallbacks: `nest.png`, `chicken.png`
+
+Regenerate painted placeholders: `node scripts/gen-sprites.mjs`
+
+## Audio (`audio/`)
+
+WAV stubs (`ui_tap`, `cluck`, `lay`, `plop`, `bounce`, `crack`, `star`, `win`, `fail`, `music_loop`).
+The audio bus prefers these files and falls back to procedural Web Audio.
+
+Regenerate: `node scripts/gen-audio.mjs`

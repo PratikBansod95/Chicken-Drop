@@ -1,10 +1,25 @@
-import type { FixedObject, PlacedTool } from "../types";
+import type { FixedObject, HazardKind, PlacedTool } from "../types";
+import { assets, type SpriteKey } from "../assets/bank";
+
+const SPRITE: Record<HazardKind, SpriteKey> = {
+  spike: "spike",
+  fire: "fire",
+  pan: "pan",
+};
 
 export function drawHazard(ctx: CanvasRenderingContext2D, obj: FixedObject | PlacedTool) {
   if (!["spike", "fire", "pan"].includes(obj.type)) return;
   ctx.save();
   ctx.translate(obj.x, obj.y);
   ctx.rotate(obj.angle);
+
+  const img = assets.get(SPRITE[obj.type as HazardKind]);
+  if (img) {
+    ctx.drawImage(img, -obj.w / 2, -obj.h / 2, obj.w, obj.h);
+    ctx.restore();
+    return;
+  }
+
   ctx.strokeStyle = "#21304a88";
   ctx.lineWidth = 3;
 

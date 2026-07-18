@@ -12,4 +12,5 @@ export const icons = {
   trash: `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 7h14M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>`,
   draw: `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 17.2 14.6 6.6l2.8 2.8L6.8 20H4v-2.8zm12.3-12.3 1.4-1.4a1.5 1.5 0 0 1 2.1 0l1.7 1.7a1.5 1.5 0 0 1 0 2.1l-1.4 1.4-2.8-2.8z"/></svg>`,
   egg: `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="13" rx="7" ry="9" fill="currentColor"/></svg>`,
+  map: `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 6.5 9 4l6 2.5L20 4v13.5L15 20l-6-2.5L4 20V6.5zM9 4v13.5M15 6.5V20"/></svg>`,
 } as const;

@@ -8,7 +8,14 @@ export const EGG_RADIUS = 22;
 export type ToolKind = "spring" | "pad" | "fan" | "conveyor" | "sticky";
 export type HazardKind = "spike" | "fire" | "pan";
 export type PlacedKind = ToolKind | HazardKind;
-export type GameMode = "intro" | "ready" | "laying" | "running" | "won" | "failed";
+export type GameMode =
+  | "intro"
+  | "map"
+  | "ready"
+  | "laying"
+  | "running"
+  | "won"
+  | "failed";
 export type SelectedTool = "draw" | ToolKind;
 
 export interface Vec2 {
@@ -55,6 +62,7 @@ export interface SaveData {
   bestStars: number[];
   muted: boolean;
   reduceMotion: boolean;
+  seenTutorial: boolean;
 }
 
 export interface EggRuntime {
