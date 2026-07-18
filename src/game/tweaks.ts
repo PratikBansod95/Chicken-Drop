@@ -51,5 +51,9 @@ export function loadSave(): SaveData {
 }
 
 export function writeSave(data: SaveData): void {
-  localStorage.setItem(KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(data));
+  } catch {
+    /* Storage can be unavailable in private mode or when quota is exhausted. */
+  }
 }

@@ -2,9 +2,10 @@ import { AudioBus } from "./audio";
 import { assets } from "./assets/bank";
 import { generateLevel } from "./levels";
 import { PhysicsWorld, type InkStroke, type PlacedTool } from "./physics";
-import { renderFrame, resizeCanvas, worldFromClient } from "./render";
+import { renderFrame, resizeCanvas, worldFromClient, type ViewState } from "./render";
 import { loadSave, writeSave } from "./save";
 import { TWEAKS } from "./tweaks";
+import { EGG_SPEC, NEST_SPEC, SIMULATION } from "./config/geometry";
 import { TOOL_META } from "./types";
 import type {
   FailReason,
@@ -16,6 +17,8 @@ import type {
   Vec2,
 } from "./types";
 import { CameraFx } from "./systems/cameraFx";
+import { FixedStepClock } from "./systems/fixedStep";
+import { hitTestPlacedTool } from "./systems/selection";
 import { appendDraftPoint, commitStroke, strokeLength } from "./systems/inkDraw";
 import { failMessage, scoreStars } from "./systems/winLose";
 import { updateHud } from "./ui/hud";
@@ -39,8 +42,11 @@ export class Game {
   private remainingTools: Partial<Record<ToolKind, number>> = {};
   private selectedTool: SelectedTool = "draw";
   private selectedPlacedId: string | null = null;
-  private view = { w: 0, h: 0, scale: 1 };
+  private draggingPlacedId: string | null = null;
+  private dragOffset: Vec2 = { x: 0, y: 0 };
+  private view: ViewState = { w: 0, h: 0, scale: 1, offsetX: 0, offsetY: 0 };
   private clock = 0;
+  private fixedClock = new FixedStepClock();
   private elapsed = 0;
   private chickenPhase: "idle" | "lay" = "idle";
   private eggsToLay = 0;
@@ -50,11 +56,13 @@ export class Game {
   private collectedStars = new Set<number>();
   private crackedPositions: Vec2[] = [];
   private failMessageText = "";
+  private failAt = 0;
   private toastUntil = 0;
   private raf = 0;
   private lastTs = 0;
   private drawing = false;
   private paused = false;
+  private resizeObserver: ResizeObserver | null = null;
   private els!: {
     level: HTMLElement;
     stars: HTMLElement;
@@ -112,6 +120,9 @@ export class Game {
     this.loadLevel(this.save.unlockedLevel);
     this.onResize();
     window.addEventListener("resize", this.onResize);
+    window.visualViewport?.addEventListener("resize", this.onResize);
+    this.resizeObserver = new ResizeObserver(this.onResize);
+    this.resizeObserver.observe(this.root);
     window.addEventListener("keydown", this.onKey);
     document.addEventListener("visibilitychange", this.onVisibility);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
@@ -120,13 +131,16 @@ export class Game {
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
 
     this.physics.onEggNested = (id) => this.handleNested(id);
-    this.physics.onEggBroken = (id, reason) => this.handleBroken(id, reason);
+    this.physics.onEggBroken = (id, reason, at) => this.handleBroken(id, reason, at);
     this.physics.onBounce = (s) => {
       this.audio.play("bounce");
       this.fx.impulse(Math.min(8, s * 0.35));
     };
 
-    void assets.load().then(() => {
+    const preloadFill = this.root.querySelector<HTMLElement>(".preload-bar span");
+    void assets.load((loaded, total) => {
+      if (preloadFill) preloadFill.style.width = `${Math.round((loaded / total) * 100)}%`;
+    }).then(() => {
       this.els.preload.hidden = true;
       this.els.startOverlay.hidden = false;
       this.canvas.hidden = false;
@@ -143,6 +157,8 @@ export class Game {
   destroy() {
     cancelAnimationFrame(this.raf);
     window.removeEventListener("resize", this.onResize);
+    window.visualViewport?.removeEventListener("resize", this.onResize);
+    this.resizeObserver?.disconnect();
     window.removeEventListener("keydown", this.onKey);
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.physics.destroy();
@@ -206,13 +222,16 @@ export class Game {
     this.remainingTools = { ...this.level.tools };
     this.selectedTool = "draw";
     this.selectedPlacedId = null;
+    this.draggingPlacedId = null;
     this.elapsed = 0;
+    this.fixedClock.reset();
     this.nestedCount = 0;
     this.eggsLaid = 0;
     this.eggsToLay = this.level.eggCount;
     this.collectedStars.clear();
     this.crackedPositions = [];
     this.failMessageText = "";
+    this.failAt = 0;
     this.chickenPhase = "idle";
     this.mode = this.els.startOverlay.hidden ? "ready" : "intro";
     this.physics.resetLevel(this.level, [], []);
@@ -253,16 +272,14 @@ export class Game {
       if (this.mode === "intro") this.showToast("Tap Start first");
       return;
     }
-    if (this.inkUsed <= 0 && this.placed.length === 0) {
-      this.showToast("Draw a path or place a tool first");
-      return;
-    }
     this.physics.resetLevel(this.level, this.strokes, this.placed);
     this.nestedCount = 0;
     this.eggsLaid = 0;
     this.eggsToLay = this.level.eggCount;
     this.elapsed = 0;
+    this.fixedClock.reset();
     this.crackedPositions = [];
+    this.failAt = 0;
     this.collectedStars.clear();
     this.level.stars.forEach((s) => (s.collected = false));
     this.mode = "laying";
@@ -279,16 +296,30 @@ export class Game {
       this.chickenPhase = "idle";
       return;
     }
+    const base = {
+      x: this.level.start.x + EGG_SPEC.spawnOffset.x,
+      y: this.level.start.y + EGG_SPEC.spawnOffset.y,
+    };
+    const candidates = [
+      base,
+      { x: base.x - 34, y: base.y - 8 },
+      { x: base.x + 34, y: base.y - 8 },
+      { x: base.x, y: base.y - 34 },
+    ];
+    const spawn = candidates.find((point) => this.physics.canSpawnEgg(point));
+    if (!spawn) {
+      this.layTimer = 0.12;
+      this.showToast("Clear a little space below the hen");
+      return;
+    }
+
     this.eggsLaid += 1;
-    const jitter = (this.eggsLaid - 1) * 8;
-    this.physics.spawnEgg(
-      {
-        x: this.level.start.x - 10 + (Math.random() * 10 - 5),
-        y: this.level.start.y + 40 + jitter,
-      },
-      `egg-${this.eggsLaid}`,
-    );
+    this.physics.spawnEgg(spawn, `egg-${this.eggsLaid}`);
     this.audio.play("lay");
+    if (this.eggsLaid >= this.eggsToLay) {
+      this.mode = "running";
+      this.chickenPhase = "idle";
+    }
     this.updateHud();
   }
 
@@ -301,11 +332,12 @@ export class Game {
     if (this.nestedCount >= this.eggsToLay && this.eggsLaid >= this.eggsToLay) this.win();
   }
 
-  private handleBroken(id: string, reason: FailReason) {
+  private handleBroken(id: string, reason: FailReason, at: Vec2) {
     this.failMessageText = failMessage(reason, id.replace("egg-", "Egg "));
+    this.crackedPositions.push(at);
     this.audio.play("crack");
     this.fx.impulse(10);
-    this.fail();
+    this.failAt = this.clock + 0.5;
   }
 
   private win() {
@@ -443,13 +475,46 @@ export class Game {
     if (e.code === "Delete" || e.code === "Backspace") this.deleteSelected();
   };
 
+  private isProtectedBuildPoint(point: Vec2): boolean {
+    const spawn = {
+      x: this.level.start.x + EGG_SPEC.spawnOffset.x,
+      y: this.level.start.y + EGG_SPEC.spawnOffset.y,
+    };
+    if (
+      Math.hypot(point.x - spawn.x, point.y - spawn.y) <
+      EGG_SPEC.spawnClearance + 24
+    ) {
+      return true;
+    }
+    const nestX = (point.x - this.level.basket.x) / (NEST_SPEC.outerWidth / 2 + 16);
+    const nestY = (point.y - this.level.basket.y) / (NEST_SPEC.wallHeight / 2 + 24);
+    return nestX * nestX + nestY * nestY < 1;
+  }
+
   private onPointerDown = (e: PointerEvent) => {
     if (this.mode !== "ready") return;
     void this.audio.unlock();
     const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
+    if (!p) return;
     this.canvas.setPointerCapture(e.pointerId);
 
+    const placedHit = hitTestPlacedTool(this.placed, p);
+    if (placedHit) {
+      this.selectedPlacedId = placedHit.id;
+      this.draggingPlacedId = placedHit.id;
+      this.dragOffset = { x: p.x - placedHit.x, y: p.y - placedHit.y };
+      this.selectedTool = "draw";
+      this.refreshTray();
+      return;
+    }
+
+    if (this.isProtectedBuildPoint(p)) {
+      this.showToast("Keep the hen and nest openings clear");
+      return;
+    }
+
     if (this.selectedTool === "draw") {
+      this.selectedPlacedId = null;
       this.drawing = true;
       this.draft = [p];
       return;
@@ -477,8 +542,16 @@ export class Game {
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    if (!this.drawing || !this.draft) return;
     const p = worldFromClient(this.canvas, e.clientX, e.clientY, this.view);
+    if (!p) return;
+    if (this.draggingPlacedId) {
+      const tool = this.placed.find((placed) => placed.id === this.draggingPlacedId);
+      if (!tool || this.isProtectedBuildPoint(p)) return;
+      tool.x = p.x - this.dragOffset.x;
+      tool.y = p.y - this.dragOffset.y;
+      return;
+    }
+    if (!this.drawing || !this.draft || this.isProtectedBuildPoint(p)) return;
     const result = appendDraftPoint(
       this.draft,
       p,
@@ -489,6 +562,10 @@ export class Game {
   };
 
   private onPointerUp = () => {
+    if (this.draggingPlacedId) {
+      this.draggingPlacedId = null;
+      return;
+    }
     if (!this.drawing || !this.draft) {
       this.drawing = false;
       return;
@@ -515,42 +592,61 @@ export class Game {
     }
   }
 
+  private simulateFixedStep() {
+    const dtSec = SIMULATION.fixedStepMs / 1000;
+
+    if (this.mode === "laying") {
+      this.layTimer -= dtSec;
+      if (this.layTimer <= 0) {
+        this.layNextEgg();
+        if (this.mode === "laying") this.layTimer = EGG_SPEC.laySpacingSec;
+      }
+    } else if (this.mode === "running") {
+      this.elapsed += dtSec;
+      if (this.elapsed > this.level.timeLimit) {
+        this.failMessageText = failMessage("timeout");
+        this.fail();
+        return;
+      }
+    } else {
+      return;
+    }
+
+    this.physics.step(SIMULATION.fixedStepMs);
+    this.collectStars();
+
+    if (
+      this.mode === "running" &&
+      this.nestedCount >= this.eggsToLay &&
+      this.eggsLaid >= this.eggsToLay &&
+      this.physics.eggs.every((egg) => egg.broken || egg.nested)
+    ) {
+      this.win();
+    }
+  }
+
   private tick = (ts: number) => {
-    const dt = this.paused ? 0 : Math.min(0.033, Math.max(0, (ts - this.lastTs) / 1000));
+    const frameMs = this.paused
+      ? 0
+      : Math.min(SIMULATION.maxFrameMs, Math.max(0, ts - this.lastTs));
+    const dt = frameMs / 1000;
     this.lastTs = ts;
     this.clock += dt;
     this.fx.update(dt);
 
     if (this.clock > this.toastUntil) this.els.toast.hidden = true;
 
-    if (this.mode === "laying" && !this.paused) {
-      this.layTimer -= dt;
-      if (this.layTimer <= 0) {
-        this.layNextEgg();
-        this.layTimer = TWEAKS.eggLaySpacingMs / 1000;
-        if (this.eggsLaid >= this.eggsToLay) {
-          this.mode = "running";
-          this.chickenPhase = "idle";
+    if (this.failAt > 0 && this.clock >= this.failAt) {
+      this.failAt = 0;
+      this.fail();
+    }
+
+    if (!this.paused && (this.mode === "laying" || this.mode === "running")) {
+      this.fixedClock.advance(frameMs, () => {
+        if (this.mode === "laying" || this.mode === "running") {
+          this.simulateFixedStep();
         }
-      }
-      this.physics.step(dt * 1000);
-      this.collectStars();
-    } else if (this.mode === "running" && !this.paused) {
-      this.elapsed += dt;
-      if (this.elapsed > this.level.timeLimit) {
-        this.failMessageText = failMessage("timeout");
-        this.fail();
-      } else {
-        this.physics.step(dt * 1000);
-        this.collectStars();
-        if (
-          this.nestedCount >= this.eggsToLay &&
-          this.eggsLaid >= this.eggsToLay &&
-          this.physics.eggs.every((e) => e.broken || e.nested)
-        ) {
-          this.win();
-        }
-      }
+      });
       this.updateHud();
     }
 
@@ -567,6 +663,7 @@ export class Game {
       crackedPositions: this.crackedPositions,
       fx: this.fx,
       reduceMotion: this.save.reduceMotion,
+      selectedPlacedId: this.selectedPlacedId,
     });
 
     this.raf = requestAnimationFrame(this.tick);

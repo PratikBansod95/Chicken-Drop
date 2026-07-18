@@ -1,4 +1,5 @@
-import { EGG_RADIUS } from "../types";
+import { assets } from "../assets/bank";
+import { EGG_SPEC } from "../config/geometry";
 
 export function drawEgg(
   ctx: CanvasRenderingContext2D,
@@ -18,7 +19,7 @@ export function drawEgg(
   if (!broken) {
     ctx.fillStyle = "rgba(60,40,20,0.16)";
     ctx.beginPath();
-    ctx.ellipse(0, EGG_RADIUS * 0.85, EGG_RADIUS * 0.7, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, EGG_SPEC.radius * 0.88, EGG_SPEC.radius * 0.72, 7, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -45,21 +46,34 @@ export function drawEgg(
     ctx.arc(0, 8, 8, 0, Math.PI * 2);
     ctx.fill();
   } else {
-    const g = ctx.createRadialGradient(-7, -10, 3, 0, 2, EGG_RADIUS + 6);
-    g.addColorStop(0, "#fffdf6");
-    g.addColorStop(0.55, nested ? "#ffe9b0" : "#f7e8c8");
-    g.addColorStop(1, nested ? "#f0c96a" : "#e6cfa0");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, EGG_RADIUS * 0.82, EGG_RADIUS, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(160, 120, 70, 0.55)";
-    ctx.lineWidth = 2.4;
-    ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.beginPath();
-    ctx.ellipse(-6, -9, 5, 8, -0.35, 0, Math.PI * 2);
-    ctx.fill();
+    const img = assets.get("egg");
+    if (img) {
+      ctx.drawImage(
+        img,
+        -EGG_SPEC.renderWidth / 2,
+        -EGG_SPEC.renderHeight / 2,
+        EGG_SPEC.renderWidth,
+        EGG_SPEC.renderHeight,
+      );
+      if (nested) {
+        ctx.fillStyle = "rgba(255, 206, 85, 0.12)";
+        ctx.beginPath();
+        ctx.ellipse(0, 1, EGG_SPEC.radius * 0.88, EGG_SPEC.radius, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      const g = ctx.createRadialGradient(-7, -10, 3, 0, 2, EGG_SPEC.radius + 6);
+      g.addColorStop(0, "#fffdf6");
+      g.addColorStop(0.55, nested ? "#ffe9b0" : "#f7e8c8");
+      g.addColorStop(1, nested ? "#f0c96a" : "#e6cfa0");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, EGG_SPEC.radius * 0.86, EGG_SPEC.radius, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(160, 120, 70, 0.55)";
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }

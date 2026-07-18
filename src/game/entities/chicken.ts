@@ -30,14 +30,5 @@ export function drawChicken(
     ctx.stroke();
   }
 
-  if (phase === "lay") {
-    ctx.fillStyle = "rgba(255, 232, 163, 0.95)";
-    ctx.beginPath();
-    ctx.ellipse(-18, 42, 11, 13, 0.12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(180, 140, 70, 0.55)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
   ctx.restore();
 }

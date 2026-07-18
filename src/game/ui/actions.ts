@@ -5,11 +5,21 @@ export function bindActions(
   playTap: () => void,
   map: Record<string, () => void | Promise<void>>,
 ) {
-  for (const [name, fn] of Object.entries(map)) {
-    root.querySelector(`[data-action="${name}"]`)?.addEventListener("click", async () => {
-      await unlock();
-      playTap();
-      await fn();
-    });
-  }
+  root.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLElement>("[data-action]");
+    if (!button || !root.contains(button)) return;
+    const action = button.dataset.action;
+    const fn = action ? map[action] : undefined;
+    if (!fn) return;
+
+    // Gameplay actions must not wait on browsers that suspend AudioContext.resume().
+    void unlock()
+      .then(playTap)
+      .catch(() => {
+        /* Audio remains optional; never block controls. */
+      });
+    await fn();
+  });
 }

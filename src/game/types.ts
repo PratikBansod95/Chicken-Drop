@@ -3,8 +3,6 @@ export const WORLD = {
   height: 1180,
 } as const;
 
-export const EGG_RADIUS = 22;
-
 export type ToolKind = "spring" | "pad" | "fan" | "conveyor" | "sticky";
 export type HazardKind = "spike" | "fire" | "pan";
 export type PlacedKind = ToolKind | HazardKind;
@@ -32,6 +30,7 @@ export interface FixedObject {
   rotating?: boolean;
   rotateSpeed?: number;
   dir?: number;
+  bodyIds?: number[];
 }
 
 export interface LevelData {
@@ -57,12 +56,15 @@ export interface SaveData {
   reduceMotion: boolean;
 }
 
+export type NestCaptureState = "outside" | "entered" | "supported" | "settled" | "captured";
+
 export interface EggRuntime {
   id: string;
   bodyId: number;
   nested: boolean;
   broken: boolean;
-  nestHold: number;
+  nestState: NestCaptureState;
+  settleTime: number;
 }
 
 export interface InkStroke {

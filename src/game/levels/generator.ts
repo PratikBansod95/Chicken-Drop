@@ -1,4 +1,5 @@
 import { WORLD, TOOL_META, type FixedObject, type LevelData, type StarSpot, type ToolKind, type Vec2 } from "../types";
+import { EGG_SPEC, NEST_SPEC } from "../config/geometry";
 import { eggCountFor, timeLimitFor } from "./recipes";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -47,7 +48,7 @@ function makeObj(
   extra: Partial<FixedObject> = {},
 ): FixedObject {
   return {
-    id: `${type}-${x}-${y}-${Math.random().toString(16).slice(2)}`,
+    id: `${type}-${Math.round(x)}-${Math.round(y)}`,
     type,
     x,
     y,
@@ -84,7 +85,9 @@ function placeHazardNearPath(
         y: clamp(start.y + dy * t + ny * side * s, 300, WORLD.height - margin - 90),
       };
       const ok =
-        ![start, basket, ...stars].some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 90) &&
+        Math.hypot(start.x - p.x, start.y - p.y) >= EGG_SPEC.spawnClearance + 90 &&
+        Math.hypot(basket.x - p.x, basket.y - p.y) >= NEST_SPEC.safeMarginX &&
+        !stars.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 90) &&
         !fixed.some((f) => Math.hypot(f.x - p.x, f.y - p.y) < 100);
       if (ok) return p;
     }
@@ -104,8 +107,16 @@ export function generateLevel(n: number): LevelData {
     y: clamp(startBase.y + Math.cos(level * 1.4) * 18 + loop * 16, 100, 280),
   };
   const basket: Vec2 = {
-    x: clamp(basketBase.x + Math.cos(level * 2.3) * 28 - loop * 9, 95, 905),
-    y: clamp(basketBase.y + Math.sin(level * 1.2) * 24 - loop * 12, 660, 1070),
+    x: clamp(
+      basketBase.x + Math.cos(level * 2.3) * 28 - loop * 9,
+      NEST_SPEC.safeMarginX,
+      WORLD.width - NEST_SPEC.safeMarginX,
+    ),
+    y: clamp(
+      basketBase.y + Math.sin(level * 1.2) * 24 - loop * 12,
+      660,
+      WORLD.height - NEST_SPEC.safeMarginBottom,
+    ),
   };
 
   const count = eggCountFor(level);
@@ -132,7 +143,7 @@ export function generateLevel(n: number): LevelData {
         angle: left ? 0 : 180,
         w: 82,
         h: 90,
-        dir: left ? 1 : -1,
+        dir: 1,
       }),
     );
   }
@@ -170,7 +181,14 @@ export function generateLevel(n: number): LevelData {
   }
 
   const tools = toolBudget(level);
-  const parTools = Object.values(tools).reduce((a, b) => a + (b ?? 0), 0);
+  const availableTools = Object.values(tools).reduce((a, b) => a + (b ?? 0), 0);
+  const parTools = Math.ceil(availableTools * 0.5);
+  const safeFixed = fixed.filter(
+    (object) =>
+      Math.hypot(object.x - basket.x, object.y - basket.y) >= NEST_SPEC.safeMarginX &&
+      Math.hypot(object.x - start.x, object.y - start.y) >=
+        EGG_SPEC.spawnClearance + Math.max(object.w, object.h) / 2,
+  );
 
   return {
     number: level,
@@ -179,11 +197,45 @@ export function generateLevel(n: number): LevelData {
     start,
     basket,
     stars,
-    fixedObjects: fixed,
+    fixedObjects: safeFixed,
     tools,
     inkLimit,
     parInk: Math.round(inkLimit * 0.78),
     parTools,
     timeLimit: timeLimitFor(level),
   };
+}
+
+export function validateLevelGeometry(level: LevelData): string[] {
+  const issues: string[] = [];
+  if (
+    level.basket.x < NEST_SPEC.safeMarginX ||
+    level.basket.x > WORLD.width - NEST_SPEC.safeMarginX
+  ) {
+    issues.push("nest-outside-horizontal-safe-area");
+  }
+  if (level.basket.y > WORLD.height - NEST_SPEC.safeMarginBottom) {
+    issues.push("nest-under-dock-safe-area");
+  }
+  if (
+    level.start.x < EGG_SPEC.spawnClearance ||
+    level.start.x > WORLD.width - EGG_SPEC.spawnClearance
+  ) {
+    issues.push("spawn-outside-horizontal-safe-area");
+  }
+  for (const object of level.fixedObjects) {
+    if (
+      Math.hypot(object.x - level.basket.x, object.y - level.basket.y) <
+      NEST_SPEC.safeMarginX
+    ) {
+      issues.push(`object-overlaps-nest:${object.id}`);
+    }
+    if (
+      Math.hypot(object.x - level.start.x, object.y - level.start.y) <
+      EGG_SPEC.spawnClearance + Math.max(object.w, object.h) / 2
+    ) {
+      issues.push(`object-overlaps-spawn:${object.id}`);
+    }
+  }
+  return issues;
 }

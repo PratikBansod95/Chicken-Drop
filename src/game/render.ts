@@ -1,14 +1,23 @@
 import { WORLD } from "./types";
 import type { LevelData, Vec2 } from "./types";
 import type { InkStroke, PlacedTool, PhysicsWorld } from "./physics";
+import { INK_SPEC } from "./config/geometry";
 import { drawChicken } from "./entities/chicken";
 import { drawEgg } from "./entities/egg";
-import { drawBasket } from "./entities/basket";
+import { drawNestBack, drawNestFront } from "./entities/nest";
 import { drawStar } from "./entities/star";
 import { drawTool } from "./entities/tools";
 import { drawHazard } from "./entities/hazards";
 import { drawBackdrop } from "./world/backdrop";
 import type { CameraFx } from "./systems/cameraFx";
+
+export interface ViewState {
+  w: number;
+  h: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
 
 export function resizeCanvas(canvas: HTMLCanvasElement) {
   const parent = canvas.closest(".stage") as HTMLElement | null ?? canvas.parentElement!;
@@ -21,18 +30,29 @@ export function resizeCanvas(canvas: HTMLCanvasElement) {
   canvas.style.height = `${h}px`;
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { w, h, scale: Math.min(w / WORLD.width, h / WORLD.height) };
+  const topUi = Math.min(112, h * 0.13);
+  const bottomUi = Math.min(146, h * 0.16);
+  const playHeight = Math.max(320, h - topUi - bottomUi);
+  const scale = Math.min(w / WORLD.width, playHeight / WORLD.height);
+  return {
+    w,
+    h,
+    scale,
+    offsetX: (w - WORLD.width * scale) / 2,
+    offsetY: topUi + (playHeight - WORLD.height * scale) / 2,
+  } satisfies ViewState;
 }
 
 export function worldFromClient(
   canvas: HTMLCanvasElement,
   clientX: number,
   clientY: number,
-  view: { w: number; h: number; scale: number },
-): Vec2 {
+  view: ViewState,
+): Vec2 | null {
   const rect = canvas.getBoundingClientRect();
-  const sx = (clientX - rect.left - (view.w - WORLD.width * view.scale) / 2) / view.scale;
-  const sy = (clientY - rect.top - (view.h - WORLD.height * view.scale) / 2) / view.scale;
+  const sx = (clientX - rect.left - view.offsetX) / view.scale;
+  const sy = (clientY - rect.top - view.offsetY) / view.scale;
+  if (sx < 0 || sx > WORLD.width || sy < 0 || sy > WORLD.height) return null;
   return { x: sx, y: sy };
 }
 
@@ -43,20 +63,87 @@ function drawInk(ctx: CanvasRenderingContext2D, strokes: InkStroke[], draft?: Ve
   for (const s of all) {
     if (s.points.length < 2) continue;
     ctx.strokeStyle = "rgba(87, 58, 44, 0.92)";
-    ctx.lineWidth = 12;
+    ctx.lineWidth = INK_SPEC.outerStroke;
     ctx.beginPath();
     ctx.moveTo(s.points[0].x, s.points[0].y);
     for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
     ctx.stroke();
     ctx.strokeStyle = "#f0b84a";
-    ctx.lineWidth = 6;
+    ctx.lineWidth = INK_SPEC.innerStroke;
     ctx.stroke();
+  }
+}
+
+function drawSelection(ctx: CanvasRenderingContext2D, tool: PlacedTool, time: number) {
+  ctx.save();
+  ctx.translate(tool.x, tool.y);
+  ctx.rotate(tool.angle);
+  const pulse = 1 + Math.sin(time * 5) * 0.035;
+  ctx.strokeStyle = "rgba(255, 210, 86, 0.95)";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([10, 7]);
+  ctx.strokeRect(
+    (-tool.w / 2 - 9) * pulse,
+    (-tool.h / 2 - 9) * pulse,
+    (tool.w + 18) * pulse,
+    (tool.h + 18) * pulse,
+  );
+  ctx.restore();
+}
+
+function drawNestGlow(
+  ctx: CanvasRenderingContext2D,
+  position: Vec2,
+  strength: number,
+  time: number,
+  reduceMotion: boolean,
+) {
+  if (strength <= 0) return;
+  const pulse = reduceMotion ? 1 : 0.92 + Math.sin(time * 5) * 0.08;
+  const glow = ctx.createRadialGradient(
+    position.x,
+    position.y,
+    24,
+    position.x,
+    position.y,
+    190 * pulse,
+  );
+  glow.addColorStop(0, `rgba(255, 223, 110, ${0.2 + strength * 0.12})`);
+  glow.addColorStop(1, "rgba(255, 223, 110, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.ellipse(position.x, position.y + 12, 190 * pulse, 92 * pulse, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawWind(
+  ctx: CanvasRenderingContext2D,
+  level: LevelData,
+  placed: PlacedTool[],
+  time: number,
+  reduceMotion: boolean,
+) {
+  if (reduceMotion) return;
+  for (const fan of [...level.fixedObjects, ...placed].filter((object) => object.type === "fan")) {
+    for (let index = 0; index < 5; index++) {
+      const distance = 30 + ((time * 95 + index * 46) % 220);
+      const drift = Math.sin(time * 3 + index * 1.7) * 13;
+      const x = fan.x + Math.cos(fan.angle) * distance - Math.sin(fan.angle) * drift;
+      const y = fan.y + Math.sin(fan.angle) * distance + Math.cos(fan.angle) * drift;
+      ctx.strokeStyle = `rgba(220, 247, 255, ${0.34 - index * 0.045})`;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(fan.angle) * 22, y + Math.sin(fan.angle) * 22);
+      ctx.stroke();
+    }
   }
 }
 
 export function renderFrame(opts: {
   canvas: HTMLCanvasElement;
-  view: { w: number; h: number; scale: number };
+  view: ViewState;
   level: LevelData;
   physics: PhysicsWorld;
   strokes: InkStroke[];
@@ -67,20 +154,34 @@ export function renderFrame(opts: {
   crackedPositions: Vec2[];
   fx: CameraFx;
   reduceMotion: boolean;
+  selectedPlacedId: string | null;
 }) {
   const { canvas, view, level, physics, strokes, draft, placed, chickenPhase, time, fx } = opts;
   const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, view.w, view.h);
+  const surround = ctx.createLinearGradient(0, 0, 0, view.h);
+  surround.addColorStop(0, "#83cddd");
+  surround.addColorStop(0.55, "#dce7ba");
+  surround.addColorStop(1, "#d4b66c");
+  ctx.fillStyle = surround;
+  ctx.fillRect(0, 0, view.w, view.h);
   const shake = fx.offset();
   ctx.save();
-  ctx.translate(
-    (view.w - WORLD.width * view.scale) / 2 + shake.x,
-    (view.h - WORLD.height * view.scale) / 2 + shake.y,
-  );
+  ctx.translate(view.offsetX + shake.x, view.offsetY + shake.y);
   ctx.scale(view.scale, view.scale);
 
   drawBackdrop(ctx);
-  drawBasket(ctx, level.basket);
+  const nestProgress = physics.eggs.filter(
+    (egg) => !egg.broken && egg.nestState !== "outside",
+  ).length;
+  drawNestGlow(
+    ctx,
+    level.basket,
+    Math.min(1, nestProgress / Math.max(1, level.eggCount)),
+    time,
+    opts.reduceMotion,
+  );
+  drawNestBack(ctx, level.basket);
 
   for (const star of level.stars) {
     if (star.collected) continue;
@@ -89,13 +190,19 @@ export function renderFrame(opts: {
   }
 
   for (const obj of level.fixedObjects) {
-    drawTool(ctx, obj);
-    drawHazard(ctx, obj);
+    const body = obj.bodyIds?.[0] != null ? physics.getBodyById(obj.bodyIds[0]) : null;
+    const rendered = body ? { ...obj, angle: body.angle } : obj;
+    drawTool(ctx, rendered);
+    drawHazard(ctx, rendered);
   }
   for (const obj of placed) {
-    drawTool(ctx, obj);
-    drawHazard(ctx, obj);
+    const body = obj.bodyIds[0] != null ? physics.getBodyById(obj.bodyIds[0]) : null;
+    const rendered = body ? { ...obj, angle: body.angle } : obj;
+    drawTool(ctx, rendered);
+    drawHazard(ctx, rendered);
+    if (opts.selectedPlacedId === obj.id) drawSelection(ctx, obj, time);
   }
+  drawWind(ctx, level, placed, time, opts.reduceMotion);
   drawInk(ctx, strokes, draft ?? undefined);
   drawChicken(ctx, level.start, chickenPhase, time, opts.reduceMotion);
 
@@ -108,6 +215,7 @@ export function renderFrame(opts: {
     drawEgg(ctx, body.position.x, body.position.y, body.angle, egg.nested, false, squash);
   }
   for (const p of opts.crackedPositions) drawEgg(ctx, p.x, p.y, 0, false, true);
+  drawNestFront(ctx, level.basket);
 
   fx.draw(ctx);
   ctx.restore();
