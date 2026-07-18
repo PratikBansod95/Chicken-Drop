@@ -916,7 +916,7 @@ export class Game {
       fx: this.fx,
       reduceMotion: this.save.reduceMotion,
       selectedPlacedId: this.selectedPlacedId,
-      showBuildZones: this.mode === "ready" || this.mode === "intro",
+      showBuildZones: this.clock < this.invalidSpawnUntil,
       invalidSpawn: this.clock < this.invalidSpawnUntil,
     });
 

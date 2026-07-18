@@ -52,6 +52,16 @@ describe("production campaign", () => {
     expect(levels).toHaveLength(50);
     expect(new Set(levels.map((level) => level.number)).size).toBe(50);
     expect(new Set(levels.map((level) => level.chapter)).size).toBe(10);
+    expect(
+      new Set(
+        levels.map(
+          (level) =>
+            `${level.start.x}:${level.start.y}:${level.basket.x}:${level.fixedObjects
+              .map((object) => `${object.type}@${object.x},${object.y}`)
+              .join("|")}`,
+        ),
+      ).size,
+    ).toBe(50);
     for (const level of levels) {
       expect(level.referenceSolution).toBeDefined();
       expect(level.referenceSolution!.strokes.length + level.referenceSolution!.tools.length).toBeGreaterThan(0);

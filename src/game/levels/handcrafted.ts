@@ -38,57 +38,70 @@ const CHAPTER_MECHANICS: readonly Mechanic[] = [
   "mastery",
 ];
 
+const CHAPTER_PROPS: readonly FixedObject["type"][] = [
+  "ramp",
+  "spring",
+  "pad",
+  "fan",
+  "conveyor",
+  "sticky",
+  "ramp",
+  "pad",
+  "spring",
+  "conveyor",
+];
+
 const SEEDS: readonly Seed[] = [
-  ["The First Roll", 280, 630, 138],
-  ["A Gentle Turn", 720, 370, 145],
-  ["Three Little Drops", 300, 650, 160],
-  ["Crossing Paths", 700, 350, 172],
-  ["Home Stretch", 260, 610, 150],
-  ["Coil Practice", 740, 390, 142],
-  ["Soft Launch", 300, 650, 180],
-  ["Silver Spring", 700, 350, 155],
-  ["Double Bounce", 260, 610, 190],
-  ["Spring Fling", 740, 390, 168],
-  ["Red Button", 300, 650, 145],
-  ["Bounce Timing", 700, 350, 184],
-  ["Pad Patrol", 260, 610, 158],
-  ["Five on the Fly", 740, 390, 175],
-  ["Perfect Bounce", 300, 650, 150],
-  ["First Breeze", 700, 350, 195],
-  ["Tailwind", 260, 610, 160],
-  ["Fan Club", 740, 390, 145],
-  ["Crosswind", 300, 650, 188],
-  ["Wind Rider", 700, 350, 172],
-  ["Moving Day", 260, 610, 152],
-  ["Belt Direction", 740, 390, 195],
-  ["Conveyor Crossing", 300, 650, 168],
-  ["Factory Farm", 700, 350, 148],
-  ["Express Delivery", 260, 610, 184],
-  ["Sticky Landing", 740, 390, 160],
-  ["Slow and Steady", 300, 650, 195],
-  ["Puddle Jump", 700, 350, 175],
-  ["Gentle Grip", 260, 610, 150],
-  ["Sticky Situation", 740, 390, 185],
-  ["Warm Welcome", 300, 650, 160],
-  ["Fire Lane", 700, 350, 198],
-  ["Hot Route", 260, 610, 172],
-  ["Flame Detour", 740, 390, 150],
-  ["Cool Finish", 300, 650, 188],
-  ["Pan Handle", 700, 350, 165],
-  ["Kitchen Spin", 260, 610, 198],
-  ["Frying High", 740, 390, 178],
-  ["Pan and Fan", 300, 650, 150],
-  ["Breakfast Rush", 700, 350, 190],
-  ["First Spikes", 260, 610, 168],
-  ["Needle Thread", 740, 390, 198],
-  ["Triple Trouble", 300, 650, 180],
-  ["Hazard Harvest", 700, 350, 155],
-  ["Safe Passage", 260, 610, 190],
-  ["Master Route", 740, 390, 170],
-  ["All Tools", 300, 650, 200],
-  ["Egg Gauntlet", 700, 350, 182],
-  ["Golden Run", 260, 610, 158],
-  ["The Final Nest", 740, 390, 195],
+  ["The First Roll", 180, 530, 138],
+  ["A Gentle Turn", 770, 420, 162],
+  ["Three Little Drops", 280, 630, 186],
+  ["Crossing Paths", 670, 320, 210],
+  ["Home Stretch", 380, 730, 150],
+  ["Coil Practice", 820, 470, 176],
+  ["Soft Launch", 230, 580, 204],
+  ["Silver Spring", 720, 370, 232],
+  ["Double Bounce", 330, 680, 158],
+  ["Spring Fling", 620, 270, 190],
+  ["Red Button", 430, 780, 220],
+  ["Bounce Timing", 770, 420, 145],
+  ["Pad Patrol", 180, 530, 198],
+  ["Five on the Fly", 670, 320, 240],
+  ["Perfect Bounce", 280, 630, 168],
+  ["First Breeze", 820, 470, 214],
+  ["Tailwind", 380, 730, 246],
+  ["Fan Club", 720, 370, 154],
+  ["Crosswind", 230, 580, 188],
+  ["Wind Rider", 620, 270, 224],
+  ["Moving Day", 330, 680, 142],
+  ["Belt Direction", 770, 420, 202],
+  ["Conveyor Crossing", 430, 780, 234],
+  ["Factory Farm", 670, 320, 172],
+  ["Express Delivery", 180, 530, 218],
+  ["Sticky Landing", 820, 470, 152],
+  ["Slow and Steady", 280, 630, 196],
+  ["Puddle Jump", 720, 370, 238],
+  ["Gentle Grip", 380, 730, 164],
+  ["Sticky Situation", 620, 270, 208],
+  ["Warm Welcome", 230, 580, 248],
+  ["Fire Lane", 770, 420, 178],
+  ["Hot Route", 330, 680, 212],
+  ["Flame Detour", 670, 320, 148],
+  ["Cool Finish", 430, 780, 192],
+  ["Pan Handle", 820, 470, 226],
+  ["Kitchen Spin", 180, 530, 156],
+  ["Frying High", 720, 370, 200],
+  ["Pan and Fan", 280, 630, 242],
+  ["Breakfast Rush", 620, 270, 170],
+  ["First Spikes", 380, 730, 216],
+  ["Needle Thread", 770, 420, 250],
+  ["Triple Trouble", 230, 580, 182],
+  ["Hazard Harvest", 670, 320, 222],
+  ["Safe Passage", 330, 680, 146],
+  ["Master Route", 820, 470, 194],
+  ["All Tools", 430, 780, 236],
+  ["Egg Gauntlet", 720, 370, 166],
+  ["Golden Run", 180, 530, 206],
+  ["The Final Nest", 620, 270, 244],
 ] as const;
 
 function fixedObject(
@@ -129,8 +142,58 @@ function toolBudget(chapter: number): Partial<Record<ToolKind, number>> {
   return tools;
 }
 
-function hazardLayout(level: number, chapter: number, basket: Vec2): FixedObject[] {
-  const awayX = basket.x < 500 ? 930 : 70;
+function courseLayout(
+  level: number,
+  chapter: number,
+  start: Vec2,
+  basket: Vec2,
+): FixedObject[] {
+  if (level === 1) return [];
+  const movingRight = basket.x > start.x;
+  const x = movingRight ? 900 : 100;
+  const type = CHAPTER_PROPS[chapter - 1];
+  const sizes: Record<FixedObject["type"], readonly [number, number]> = {
+    ramp: [120, 100],
+    spring: [84, 90],
+    pad: [110, 62],
+    fan: [84, 92],
+    conveyor: [145, 54],
+    sticky: [135, 62],
+    spike: [132, 66],
+    fire: [118, 88],
+    pan: [172, 72],
+  };
+  const [w, h] = sizes[type];
+  const outwardAngle =
+    type === "fan" ? (movingRight ? 0 : Math.PI) : ((level % 5) - 2) * 0.08;
+  const objects = [
+    fixedObject(type, x, 390 + (level % 4) * 105, w, h, outwardAngle),
+  ];
+
+  if (level % 3 === 0) {
+    const supportType: FixedObject["type"] = chapter <= 2 ? "ramp" : "pad";
+    const [supportW, supportH] = sizes[supportType];
+    objects.push(
+      fixedObject(
+        supportType,
+        x + (movingRight ? -45 : 45),
+        820 - (level % 4) * 55,
+        supportW,
+        supportH,
+        movingRight ? -0.1 : 0.1,
+      ),
+    );
+  }
+  return objects;
+}
+
+function hazardLayout(
+  level: number,
+  chapter: number,
+  basket: Vec2,
+  start: Vec2,
+): FixedObject[] {
+  const awayX = basket.x > start.x ? 930 : 70;
   const objects: FixedObject[] = [];
   const add = (kind: HazardKind, y: number, angle = 0) => {
     const size =
@@ -236,7 +299,10 @@ function createLevel(seed: Seed, index: number): LevelData {
     start,
     basket,
     stars: routeStars,
-    fixedObjects: hazardLayout(level, chapter, basket),
+    fixedObjects: [
+      ...courseLayout(level, chapter, start, basket),
+      ...hazardLayout(level, chapter, basket, start),
+    ],
     tools,
     inkLimit: Math.ceil(solutionInk * 1.38 + 80),
     parInk: Math.ceil(solutionInk * 1.08),
